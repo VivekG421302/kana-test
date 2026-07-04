@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kana Quest — Stroke Validator</title>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --panel: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.12);
+    --text: #e8e8f0;
+    --muted: #8892a0;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; text-align: center; }
+  .wrap { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    backdrop-filter: blur(10px);
+    flex: 1;
+    min-width: 300px;
+    max-width: 100%;
+  }
+  canvas {
+    background: #0a0a14;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: block;
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+  .controls {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: opacity .2s;
+    touch-action: manipulation;
+  }
+  button:hover { opacity: .85; }
+  button:active { transform: scale(0.97); }
+  button.secondary { background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+  button.accent2 { background: var(--accent2); }
+  .info {
+    margin-top: 10px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.5;
+    text-align: center;
+  }
+  .info b { color: var(--accent2); }
+  .stroke-list {
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+  }
+  .stroke-list div { margin-bottom: 4px; word-break: break-all; }
+  input[type="file"] { display: none; }
+  .legend {
+    display: flex;
+    gap: 12px;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .legend span { display: flex; align-items: center; gap: 4px; }
+  .legend i {
+    display: inline-block;
+    width: 12px; height: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .back-link {
+    position: fixed;
+    top: 12px; left: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color .2s;
+    z-index: 10;
+    background: rgba(15,15,26,0.8);
+    padding: 6px 10px;
+    border-radius: 8px;
+    backdrop-filter: blur(4px);
+  }
+  .back-link:hover { color: var(--text); }
+  .back-link::before { content: "\2190"; font-size: 1.1rem; }
+  textarea {
+    width: 100%; height: 160px;
+    background: #0a0a14;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.75rem;
+    padding: 10px;
+    resize: vertical;
+  }
+  @media (max-width: 600px) {
+    h1 { font-size: 1.1rem; }
+    .subtitle { font-size: 0.75rem; }
+    body { padding: 12px; padding-top: 50px; }
+    .panel { min-width: 100%; padding: 12px; }
+    button { padding: 10px 14px; font-size: 0.8rem; }
+    .back-link { font-size: 0.75rem; top: 8px; left: 8px; }
+  }
+</style>
+<base target="_blank">
+</head>
+<body>
+
+<a class="back-link" href="index.html">Back to Kana Quest</a>
+
+<h1>Stroke Validator</h1>
+<div class="subtitle">Paste a refStrokes array to preview, animate, and verify stroke order</div>
+
+<div class="wrap">
+  <!-- Canvas Panel -->
+  <div class="panel">
+    <canvas id="preview" width="280" height="280"></canvas>
+    <div class="legend">
+      <span><i style="background:#7c3aed"></i>Stroke</span>
+      <span><i style="background:#22c55e"></i>Start</span>
+      <span><i style="background:#ef4444"></i>End</span>
+      <span><i style="background:#06b6d4"></i>Grid</span>
+    </div>
+    <div class="controls">
+      <button onclick="playAnimation()">Play</button>
+      <button class="secondary" onclick="stepStroke()">Step +1</button>
+      <button class="secondary" onclick="resetCanvas()">Reset</button>
+      <button class="accent2" onclick="document.getElementById('fileIn').click()">Load JSON</button>
+      <input type="file" id="fileIn" accept=".json,.js,.txt" onchange="loadFile(event)">
+    </div>
+    <div class="info" id="info">Paste a <b>refStrokes</b> array into the box</div>
+  </div>
+
+  <!-- Input Panel -->
+  <div class="panel">
+    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;">Paste refStrokes array:</div>
+    <textarea id="input" spellcheck="false" placeholder="[{x:80,y:60},{x:140,y:60},...],
+[{x:80,y:100},...]"></textarea>
+    <div class="controls">
+      <button onclick="parseAndDraw()">Draw</button>
+      <button class="secondary" onclick="clearInput()">Clear</button>
+      <button class="secondary" onclick="loadSample()">Sample: weak</button>
+    </div>
+    <div class="info" id="parseInfo">Waiting for input...</div>
+    <div class="stroke-list" id="strokeList"></div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('preview');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+let strokes = [];
+let animIndex = 0;
+let animTimer = null;
+
+// Default sample: weak (the one you provided)
+const SAMPLE = [
+  [{x:80,y:60},{x:80,y:100},{x:80,y:140}],
+  [{x:60,y:80},{x:100,y:80}],
+  [{x:60,y:120},{x:100,y:120}],
+  [{x:120,y:60},{x:180,y:60}],
+  [{x:120,y:60},{x:120,y:100}],
+  [{x:180,y:60},{x:180,y:100}],
+  [{x:120,y:100},{x:180,y:100}],
+  [{x:120,y:120},{x:180,y:120}],
+  [{x:120,y:140},{x:180,y:140}],
+  [{x:120,y:160},{x:180,y:160}]
+];
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(6,182,212,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= W; i += 40) {
+    ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,H); ctx.stroke();
+  }
+  for (let i = 0; i <= H; i += 40) {
+    ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(W,i); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(6,182,212,0.3)';
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+}
+
+function clearCanvas() {
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0,0,W,H);
+  drawGrid();
+}
+
+function drawStrokes(upTo, highlight) {
+  upTo = upTo === undefined ? strokes.length : upTo;
+  highlight = highlight === undefined ? -1 : highlight;
+  clearCanvas();
+  strokes.forEach(function(stroke, si) {
+    if (si >= upTo) return;
+    var isHL = (si === highlight);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.strokeStyle = isHL ? '#f59e0b' : '#7c3aed';
+    ctx.lineWidth = isHL ? 5 : 3;
+    ctx.globalAlpha = isHL ? 1 : 0.85;
+    stroke.forEach(function(p, i) {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.arc(stroke[0].x, stroke[0].y, isHL ? 5 : 3, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(stroke[stroke.length-1].x, stroke[stroke.length-1].y, isHL ? 5 : 3, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(si + 1, stroke[0].x, stroke[0].y - 8);
+  });
+}
+
+function parseInput(text) {
+  var m = text.match(/\[([\s\S]*)\]/);
+  if (!m) return null;
+  var inner = m[1];
+  inner = inner.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+  inner = inner.replace(/'/g, '"');
+  inner = inner.replace(/,(\s*[}\]])/g, '$1');
+  try {
+    return JSON.parse('[' + inner + ']');
+  } catch(e) {
+    return manualParse(text);
+  }
+}
+
+function manualParse(text) {
+  var result = [];
+  var strokeRegex = /\[\s*(\{[^{}]*\})\s*(?:,\s*(\{[^{}]*\})\s*)*\]/g;
+  var match;
+  while ((match = strokeRegex.exec(text)) !== null) {
+    var block = match[0];
+    var points = [];
+    var ptRegex = /\{\s*x\s*:\s*([\d.]+)\s*,\s*y\s*:\s*([\d.]+)\s*\}/g;
+    var pt;
+    while ((pt = ptRegex.exec(block)) !== null) {
+      points.push({x: parseFloat(pt[1]), y: parseFloat(pt[2])});
+    }
+    if (points.length) result.push(points);
+  }
+  return result.length ? result : null;
+}
+
+function parseAndDraw() {
+  var raw = document.getElementById('input').value.trim();
+  if (!raw) { updateInfo('Paste something first!', 'warn'); return; }
+  var parsed = parseInput(raw);
+  if (!parsed || !parsed.length) {
+    updateInfo('Could not parse strokes. Check format.', 'warn');
+    return;
+  }
+  strokes = parsed;
+  animIndex = strokes.length;
+  var totalPts = 0;
+  for (var i = 0; i < strokes.length; i++) totalPts += strokes[i].length;
+  updateInfo('Loaded <b>' + strokes.length + '</b> strokes, <b>' + totalPts + '</b> points', 'ok');
+  updateStrokeList();
+  drawStrokes();
+}
+
+function updateInfo(html, type) {
+  var el = document.getElementById('info');
+  el.innerHTML = html;
+  el.style.color = type === 'warn' ? '#f59e0b' : type === 'ok' ? '#22c55e' : '#8892a0';
+}
+
+function updateStrokeList() {
+  var el = document.getElementById('strokeList');
+  if (!strokes.length) { el.innerHTML = ''; return; }
+  var html = '';
+  for (var i = 0; i < strokes.length; i++) {
+    var s = strokes[i];
+    html += '<div><b>#' + (i+1) + '</b> ' + s.length + 'pts ';
+    for (var j = 0; j < s.length; j++) {
+      html += '(' + s[j].x + ',' + s[j].y + ')';
+      if (j < s.length - 1) html += ' \u2192 ';
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function playAnimation() {
+  if (!strokes.length) return;
+  resetCanvas();
+  animIndex = 0;
+  if (animTimer) clearInterval(animTimer);
+  animTimer = setInterval(function() {
+    animIndex++;
+    drawStrokes(animIndex, animIndex - 1);
+    if (animIndex >= strokes.length) clearInterval(animTimer);
+  }, 400);
+}
+
+function stepStroke() {
+  if (!strokes.length) return;
+  if (animIndex < strokes.length) {
+    animIndex++;
+    drawStrokes(animIndex, animIndex - 1);
+  } else {
+    animIndex = 0;
+    resetCanvas();
+  }
+}
+
+function resetCanvas() {
+  if (animTimer) clearInterval(animTimer);
+  animIndex = strokes.length;
+  drawStrokes();
+}
+
+function clearInput() {
+  document.getElementById('input').value = '';
+  strokes = [];
+  clearCanvas();
+  updateInfo('Waiting for input...', 'muted');
+  document.getElementById('strokeList').innerHTML = '';
+}
+
+function loadSample() {
+  var txt = JSON.stringify(SAMPLE, null, 2).replace(/"/g, '');
+  document.getElementById('input').value = txt;
+  parseAndDraw();
+}
+
+function loadFile(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    document.getElementById('input').value = ev.target.result;
+    parseAndDraw();
+  };
+  reader.readAsText(file);
+}
+
+// Init
+clearCanvas();
+loadSample();
+</script>
+</body>
+</html>
