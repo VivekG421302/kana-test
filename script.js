@@ -142,6 +142,7 @@ let isDrawing = false;
 let currentStroke = [];
 let allStrokes = [];
 let dpr = window.devicePixelRatio || 1;
+let lastCanvasWidth = 0;
 let recognitionTimer = null;
 let currentMode = 'auto';
 let lastResults = [];  // Store last results for correction
@@ -796,6 +797,8 @@ function initCanvas() {
     ctx.lineWidth = CONFIG.STROKE_WIDTH;
     ctx.fillStyle = CONFIG.BG_COLOR;
     ctx.fillRect(0, 0, cssW, cssH);
+
+    lastCanvasWidth = cssW;
 }
 
 function clearCanvas() {
@@ -1674,11 +1677,17 @@ document.body.addEventListener('touchmove', (e) => {
 
 resetBtn.addEventListener('click', clearCanvas);
 
-// Debounced resize
+// Debounced resize — but mobile browsers fire a 'resize' event purely from
+// the address bar hiding/showing while scrolling (viewport height changes,
+// width doesn't). Reacting to that by wiping the canvas + all results made
+// the whole app appear to "reset" on scroll. Only actually reinitialize when
+// the width genuinely changes (real orientation change / window resize).
 let resizeTimer;
 window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
+        const newWidth = canvasWrapper.getBoundingClientRect().width;
+        if (Math.abs(newWidth - lastCanvasWidth) < 2) return; // height-only change, ignore
         initCanvas();
         clearCanvas();
     }, 150);
