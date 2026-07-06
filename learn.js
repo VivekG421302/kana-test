@@ -13,10 +13,11 @@
 // any matching code — only the character dataset (DATASET from data.js).
 
 const LEARN_CONFIG = {
-    TRACE_WIDTH_RATIO: 0.085,   // guide tolerance band width, as a fraction of canvas CSS size
-    INK_WIDTH_RATIO: 0.045,     // user pen width, as a fraction of canvas CSS size
-    ALPHA_THRESHOLD: 10,        // pixel alpha above this counts as "on"
-    SUCCESS_THRESHOLD: 60,      // match % at/above this counts as a success
+    TRACE_WIDTH_RATIO: 0.085,       // guide tolerance band width, as a fraction of canvas CSS size
+    INK_WIDTH_RATIO: 0.045,         // user pen width, as a fraction of canvas CSS size
+    SCORE_INK_WIDTH_RATIO: 0.045,   // fixed line width used ONLY for scoring (decoupled from display ink)
+    ALPHA_THRESHOLD: 10,            // pixel alpha above this counts as "on"
+    SUCCESS_THRESHOLD: 60,          // match % at/above this counts as a success
     MIN_STROKE_POINTS: 3,
     STORAGE_KEY: 'kana_learn_best_scores'
 };
@@ -266,27 +267,64 @@ function resetDrawing() {
 
 // ==================== MATCHING: pixel-coverage against the trace ====================
 //
-// Both traceCanvas and inkCanvas are the same physical size, so their pixel
-// buffers line up 1:1 — no coordinate conversion needed at check time.
+// Both traceCanvas and the scoring canvas are the same physical size, so their
+// pixel buffers line up 1:1 — no coordinate conversion needed at check time.
 //
-//   coverage%   = (trace pixels also inked) / (total trace pixels)
+//   coverage%      = (trace pixels also inked) / (total trace pixels)
 //   outsidePenalty = (inked pixels outside the trace) / (total trace pixels)
-//   match% = clamp(coverage% - outsidePenalty, 0, 100)
+//   match%         = clamp(coverage% - outsidePenalty, 0, 100)
 //
 // This directly implements the requested rule: leaving guide area untouched
 // has no effect (it just doesn't count toward coverage), while ink outside
 // the guide actively subtracts from the score.
+//
+// IMPORTANT: scoring is done against a *separate* hidden canvas that re-renders
+// the recorded stroke paths (allStrokes) at a fixed SCORE_INK_WIDTH_RATIO, NOT
+// the live inkCanvas whose line width varies with INK_WIDTH_RATIO.  This keeps
+// the score independent of display pen thickness — only path accuracy matters.
+function buildScoringCanvas() {
+    const cssW = canvasWrapper.getBoundingClientRect().width;
+    const cssH = canvasWrapper.getBoundingClientRect().height;
+
+    const scoreCanvas = document.createElement('canvas');
+    scoreCanvas.width  = traceCanvas.width;   // physical px (cssW * dpr)
+    scoreCanvas.height = traceCanvas.height;  // physical px (cssH * dpr)
+
+    const scoreCtx = scoreCanvas.getContext('2d', { willReadFrequently: true });
+    scoreCtx.setTransform(dpr, 0, 0, dpr, 0, 0);   // match the main canvases' DPR transform
+    scoreCtx.lineCap     = 'round';
+    scoreCtx.lineJoin    = 'round';
+    scoreCtx.strokeStyle = '#000000';
+    scoreCtx.lineWidth   = cssW * LEARN_CONFIG.SCORE_INK_WIDTH_RATIO;
+
+    allStrokes.forEach(stroke => {
+        if (stroke.length < 2) return;
+        scoreCtx.beginPath();
+        stroke.forEach((p, i) => {
+            if (i === 0) scoreCtx.moveTo(p.x, p.y);
+            else         scoreCtx.lineTo(p.x, p.y);
+        });
+        scoreCtx.stroke();
+    });
+
+    return scoreCanvas;
+}
+
 function computeMatchPercent() {
     const w = traceCanvas.width, h = traceCanvas.height;
     const traceData = traceCtx.getImageData(0, 0, w, h).data;
-    const inkData = inkCtx.getImageData(0, 0, w, h).data;
+
+    // Re-render strokes at the fixed scoring width onto a throwaway canvas.
+    const scoreCanvas = buildScoringCanvas();
+    const scoreCtx2   = scoreCanvas.getContext('2d', { willReadFrequently: true });
+    const inkData     = scoreCtx2.getImageData(0, 0, w, h).data;
 
     let traceTotal = 0, covered = 0, outside = 0;
     const total = w * h;
     for (let i = 0; i < total; i++) {
         const a = i * 4 + 3;
         const traceOn = traceData[a] > LEARN_CONFIG.ALPHA_THRESHOLD;
-        const inkOn = inkData[a] > LEARN_CONFIG.ALPHA_THRESHOLD;
+        const inkOn   = inkData[a]   > LEARN_CONFIG.ALPHA_THRESHOLD;
         if (traceOn) {
             traceTotal++;
             if (inkOn) covered++;
