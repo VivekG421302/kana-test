@@ -27,50 +27,50 @@ const DATA_CONFIG = {
 // referenceStrokes: array of raw point sequences (will be resampled to vectors)
 
 const DATASET = [
-    // ========== HIRAGANA (71 characters) ==========
+        // ========== HIRAGANA (71 characters) ==========
     {
         char: 'あ', name: 'Hiragana A', reading: 'a', type: 'hiragana', expectedStrokes: 3,
         refStrokes: [
-            [{x:40,y:50},{x:100,y:50},{x:160,y:50}],
-            [{x:60,y:50},{x:60,y:100},{x:60,y:150},{x:50,y:170}],
-            [{x:120,y:80},{x:140,y:100},{x:130,y:130},{x:100,y:140},{x:80,y:120}]
+            [{x:60,y:55},{x:100,y:55},{x:140,y:55}],
+            [{x:100,y:55},{x:100,y:100},{x:100,y:145},{x:90,y:175}],
+            [{x:135,y:85},{x:155,y:105},{x:145,y:135},{x:115,y:150},{x:85,y:135},{x:75,y:110},{x:85,y:90},{x:105,y:80}]
         ]
     },
     {
         char: 'い', name: 'Hiragana I', reading: 'i', type: 'hiragana', expectedStrokes: 2,
         refStrokes: [
-            [{x:80,y:40},{x:80,y:100},{x:80,y:160}],
-            [{x:160,y:40},{x:160,y:80},{x:160,y:120}]
+            [{x:80,y:50},{x:80,y:100},{x:80,y:150},{x:80,y:200}],
+            [{x:160,y:50},{x:160,y:100},{x:160,y:150}]
         ]
     },
     {
         char: 'う', name: 'Hiragana U', reading: 'u', type: 'hiragana', expectedStrokes: 2,
         refStrokes: [
-            [{x:80,y:50},{x:140,y:50},{x:200,y:50}],
-            [{x:60,y:90},{x:100,y:90},{x:140,y:110},{x:160,y:140},{x:150,y:170},{x:120,y:180}]
+            [{x:70,y:60},{x:130,y:55},{x:190,y:60}],
+            [{x:70,y:100},{x:110,y:100},{x:150,y:115},{x:170,y:145},{x:165,y:180},{x:140,y:200},{x:110,y:205},{x:80,y:195}]
         ]
     },
     {
         char: 'え', name: 'Hiragana E', reading: 'e', type: 'hiragana', expectedStrokes: 2,
         refStrokes: [
-            [{x:80,y:50},{x:140,y:50},{x:200,y:50}],
-            [{x:80,y:50},{x:80,y:100},{x:80,y:150},{x:140,y:100},{x:200,y:100},{x:180,y:150},{x:140,y:170}]
+            [{x:70,y:70},{x:130,y:70},{x:190,y:70}],
+            [{x:70,y:70},{x:70,y:120},{x:70,y:170},{x:130,y:120},{x:190,y:120},{x:170,y:160},{x:130,y:190}]
         ]
     },
     {
         char: 'お', name: 'Hiragana O', reading: 'o', type: 'hiragana', expectedStrokes: 3,
         refStrokes: [
-            [{x:80,y:50},{x:140,y:50},{x:200,y:50}],
-            [{x:80,y:50},{x:80,y:100},{x:80,y:150}],
-            [{x:140,y:80},{x:160,y:110},{x:140,y:140},{x:110,y:150}]
+            [{x:70,y:60},{x:130,y:55},{x:190,y:60}],
+            [{x:70,y:60},{x:70,y:110},{x:70,y:160}],
+            [{x:130,y:90},{x:150,y:120},{x:140,y:150},{x:110,y:170},{x:90,y:160}]
         ]
     },
     {
         char: 'か', name: 'Hiragana Ka', reading: 'ka', type: 'hiragana', expectedStrokes: 3,
         refStrokes: [
-            [{x:100,y:45},{x:85,y:75},{x:90,y:115}],
-            [{x:65,y:95},{x:155,y:85},{x:190,y:125},{x:135,y:185},{x:80,y:205}],
-            [{x:160,y:155},{x:185,y:180}]
+            [{x:100,y:50},{x:85,y:90},{x:90,y:130}],
+            [{x:60,y:100},{x:150,y:95},{x:190,y:130},{x:150,y:180},{x:100,y:205}],
+            [{x:170,y:160},{x:195,y:185}]
         ]
     },
     {
@@ -364,9 +364,9 @@ const DATASET = [
     {
         char: 'が', name: 'Hiragana Ga', reading: 'ga', type: 'hiragana', expectedStrokes: 5,
         refStrokes: [
-            [{x:100,y:45},{x:85,y:75},{x:90,y:115}],
-            [{x:65,y:95},{x:155,y:85},{x:190,y:125},{x:135,y:185},{x:80,y:205}],
-            [{x:160,y:155},{x:185,y:180}],
+            [{x:100,y:50},{x:85,y:90},{x:90,y:130}],
+            [{x:60,y:100},{x:150,y:95},{x:190,y:130},{x:150,y:180},{x:100,y:205}],
+            [{x:170,y:160},{x:195,y:185}],
             [{x:220,y:30},{x:240,y:55}],
             [{x:245,y:25},{x:265,y:50}]
         ]
@@ -411,9 +411,9 @@ const DATASET = [
     {
         char: 'ざ', name: 'Hiragana Za', reading: 'za', type: 'hiragana', expectedStrokes: 5,
         refStrokes: [
-            [{x:110,y:45},{x:95,y:75}],
+            [{x:110,y:40},{x:95,y:70}],
             [{x:60,y:100},{x:140,y:95},{x:200,y:100}],
-            [{x:160,y:70},{x:150,y:145},{x:115,y:195},{x:70,y:195},{x:60,y:160}],
+            [{x:160,y:70},{x:150,y:140},{x:110,y:190},{x:70,y:195},{x:60,y:160}],
             [{x:220,y:30},{x:240,y:55}],
             [{x:245,y:25},{x:265,y:50}]
         ]
@@ -422,8 +422,8 @@ const DATASET = [
         char: 'じ', name: 'Hiragana Ji', reading: 'ji', type: 'hiragana', expectedStrokes: 3,
         refStrokes: [
             [{x:140,y:40},{x:140,y:100},{x:120,y:160},{x:100,y:180}],
-            [{x:200,y:30},{x:220,y:55}],
-            [{x:225,y:25},{x:245,y:50}]
+            [{x:220,y:30},{x:240,y:55}],
+            [{x:245,y:25},{x:265,y:50}]
         ]
     },
     {
@@ -518,8 +518,12 @@ const DATASET = [
     },
     {
         char: 'ぶ', name: 'Hiragana Bu', reading: 'bu', type: 'hiragana', expectedStrokes: 4,
-        refStrokes: [[{'x': 80, 'y': 50}, {'x': 140, 'y': 50}, {'x': 200, 'y': 50}],
- [{'x': 80, 'y': 50}, {'x': 80, 'y': 100}, {'x': 95, 'y': 150}, {'x': 140, 'y': 170}, {'x': 190, 'y': 150}], [{'x': 170, 'y': 80}, {'x': 200, 'y': 110}, {'x': 180, 'y': 140}], [{'x': 150, 'y': 160}, {'x': 170, 'y': 180}, {'x': 130, 'y': 190}]]
+        refStrokes: [
+            [{x:80,y:50},{x:140,y:50},{x:200,y:50}],
+            [{x:80,y:50},{x:80,y:100},{x:95,y:150},{x:140,y:170},{x:190,y:150}],
+            [{x:225,y:30},{x:245,y:55}],
+            [{x:250,y:25},{x:270,y:50}]
+        ]
     },
     {
         char: 'べ', name: 'Hiragana Be', reading: 'be', type: 'hiragana', expectedStrokes: 3,
@@ -581,8 +585,7 @@ const DATASET = [
             [{x:240,y:20},{x:255,y:10},{x:270,y:20},{x:270,y:35},{x:255,y:45},{x:240,y:35},{x:240,y:20}]
         ]
     },
-
-    // ========== KATAKANA (71 characters) ==========
+// ========== KATAKANA (71 characters) ==========
     {
         char: 'ア', name: 'Katakana A', reading: 'a', type: 'katakana', expectedStrokes: 2,
         refStrokes: [
