@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kana Quest — Learn Mode</title>
+<link rel="stylesheet" href="learn.css">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="top-bar">
+    <a href="index.html" class="back-link">← Practice Mode</a>
+    <div class="top-bar-title">
+      <span class="title-mark">学ぶ</span>
+      <h1>Learn Mode</h1>
+    </div>
+    <div class="top-bar-spacer" aria-hidden="true"></div>
+  </header>
+
+  <p class="subtitle">Trace the character below. Only the highlighted path counts — drawing outside it costs you points, but leaving part of it untraced just means it's not covered yet.</p>
+
+  <section class="char-picker">
+    <button id="prevBtn" class="step-btn" aria-label="Previous character">‹</button>
+    <select id="charSelect" aria-label="Choose a character to trace"></select>
+    <button id="nextBtn" class="step-btn" aria-label="Next character">›</button>
+    <button id="randomBtn" class="random-btn">Shuffle</button>
+  </section>
+
+  <section class="char-info">
+    <span id="charReading" class="char-reading">–</span>
+    <span id="charName" class="char-name">–</span>
+  </section>
+
+  <section class="canvas-section">
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <canvas id="traceCanvas"></canvas>
+      <canvas id="inkCanvas"></canvas>
+      <div class="result-banner" id="resultBanner"></div>
+    </div>
+  </section>
+
+  <section class="controls-row">
+    <button id="undoBtn" class="ctrl-btn">Undo</button>
+    <button id="clearBtn" class="ctrl-btn">Clear</button>
+    <button id="checkBtn" class="ctrl-btn primary">Check</button>
+  </section>
+
+  <section class="stats-bar" id="statsBar">
+    <div class="stat">
+      <span class="stat-value" id="statLast">–</span>
+      <span class="stat-label">Last match</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statBest">–</span>
+      <span class="stat-label">Best (this char)</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statAttempts">0</span>
+      <span class="stat-label">Attempts</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statSuccesses">0</span>
+      <span class="stat-label">Successes</span>
+    </div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="learn.js"></script>
+</body>
+</html>

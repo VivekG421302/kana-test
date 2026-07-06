@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kana Quest Learn — Hybrid Recognition Engine v4</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #f5f5f5;
+            --surface: #ffffff;
+            --text: #1a1a1a;
+            --text-secondary: #666666;
+            --accent: #e74c3c;
+            --accent-hover: #c0392b;
+            --accent-light: #fdf2f2;
+            --border: #dddddd;
+            --canvas-bg: #ffffff;
+            --canvas-border: #333333;
+            --match-bar: #e74c3c;
+            --match-bar-bg: #eeeeee;
+            --warning: #f39c12;
+            --success: #27ae60;
+            --info: #3498db;
+            --toggle-bg: #e0e0e0;
+            --toggle-active: #e74c3c;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior: none;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        /* ===== MODE TOGGLE ===== */
+        .mode-toggle-section {
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .mode-toggle {
+            display: flex;
+            background: var(--toggle-bg);
+            border-radius: 8px;
+            padding: 3px;
+            gap: 3px;
+        }
+
+        .mode-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            background: transparent;
+            color: var(--text-secondary);
+            position: relative;
+            z-index: 1;
+            -webkit-appearance: none;
+            touch-action: manipulation;
+        }
+
+        .mode-btn.active {
+            background: var(--surface);
+            color: var(--accent);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        /* ===== CANVAS ===== */
+        .canvas-section {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 320px;
+            max-height: 320px;
+            background: var(--canvas-bg);
+            border: 2px solid var(--canvas-border);
+            border-radius: 8px;
+            overflow: hidden;
+            touch-action: none;
+            cursor: crosshair;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        .canvas-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px);
+            background-size: 25% 25%;
+            z-index: 1;
+        }
+
+        .canvas-wrapper::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            height: 1px;
+            background: rgba(0,0,0,0.06);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .guide-label {
+            position: absolute;
+            top: 4px; left: 6px;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* ===== LIVE FEEDBACK OVERLAY ===== */
+        .live-feedback-overlay {
+            position: absolute;
+            top: 4px; right: 6px;
+            background: rgba(255,255,255,0.92);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            z-index: 3;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            max-width: 140px;
+        }
+
+        .live-feedback-overlay.active {
+            opacity: 1;
+        }
+
+        .live-feedback-title {
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 3px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .live-guess-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 1px 0;
+        }
+
+        .live-guess-char {
+            font-size: 1rem;
+            font-family: 'Noto Sans JP', sans-serif;
+            width: 20px;
+            text-align: center;
+        }
+
+        .live-guess-bar {
+            flex: 1;
+            height: 4px;
+            background: var(--match-bar-bg);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .live-guess-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.2s ease;
+        }
+
+        .live-guess-pct {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            width: 26px;
+            text-align: right;
+        }
+
+        /* ===== CONTROLS ===== */
+        .controls {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            justify-content: center;
+            min-height: 44px;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            -webkit-appearance: none;
+            touch-action: manipulation;
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .btn.hidden {
+            opacity: 0;
+            transform: scale(0.9);
+            pointer-events: none;
+            position: absolute;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary:active { transform: scale(0.96); }
+
+        .btn-secondary {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover { background: #cccccc; }
+        .btn-secondary:active { transform: scale(0.96); }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover { background: #219a52; }
+
+        .btn-small {
+            padding: 6px 14px;
+            font-size: 0.8rem;
+        }
+
+        /* ===== LISTENING BADGE ===== */
+        .listening-badge {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 4px;
+            transition: opacity 0.2s ease;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-listening { background: #e74c3c; animation: pulse 1s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ===== RESULT SECTION ===== */
+        .result-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            text-align: center;
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .result-placeholder {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .top-match {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .top-match.active { display: flex; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .match-char {
+            font-size: 4rem;
+            line-height: 1;
+            font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+        }
+
+        .match-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .match-name { font-size: 1rem; font-weight: 500; }
+
+        .match-reading {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            background: var(--bg);
+            padding: 2px 10px;
+            border-radius: 12px;
+        }
+
+        .btn-speak {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.15s ease;
+            touch-action: manipulation;
+        }
+
+        .btn-speak:hover {
+            background: var(--bg);
+            border-color: var(--accent);
+        }
+
+        .match-confidence {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .match-confidence strong { color: var(--accent); }
+
+        .stroke-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .stroke-meta .mismatch { color: var(--warning); }
+
+        /* ===== CORRECTION BAR ===== */
+        .correction-bar {
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+            margin-top: 4px;
+        }
+
+        .correction-bar.active { display: flex; }
+
+        .correction-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .correction-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .correction-btn {
+            width: 40px;
+            height: 40px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            font-size: 1.4rem;
+            font-family: 'Noto Sans JP', sans-serif;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .correction-btn:hover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .correction-btn:active { transform: scale(0.95); }
+
+        /* ===== STATS SECTION ===== */
+        .stats-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .stats-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .stats-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .stat-char {
+            width: 32px;
+            text-align: center;
+            font-size: 1.4rem;
+            font-family: 'Noto Sans JP', sans-serif;
+            flex-shrink: 0;
+        }
+
+        .stat-bar-wrapper {
+            flex: 1;
+            height: 24px;
+            background: var(--match-bar-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .stat-bar {
+            height: 100%;
+            background: var(--match-bar);
+            border-radius: 4px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 2px;
+        }
+
+        .stat-percent {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .stat-reading {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            width: 50px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        /* ===== FEATURE SCORE BREAKDOWN ===== */
+        .feature-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .feature-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .feature-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .feature-score {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .feature-bar {
+            height: 6px;
+            background: var(--match-bar-bg);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .feature-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+
+        .feature-bar-fill.good { background: var(--success); }
+        .feature-bar-fill.ok { background: var(--warning); }
+        .feature-bar-fill.bad { background: var(--accent); }
+
+        /* ===== POSITION ANCHOR DEBUG ===== */
+        .position-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .position-canvas {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            width: 100%;
+            height: 160px;
+            background: #f8f8f8;
+        }
+
+        .position-legend {
+            display: flex;
+            gap: 12px;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            justify-content: center;
+        }
+
+        .position-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* ===== CURVATURE DEBUG ===== */
+        .curvature-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .curvature-canvas {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            width: 100%;
+            height: 120px;
+            background: #f8f8f8;
+        }
+
+        /* ===== PIXEL OVERLAY DEBUG ===== */
+        .pixel-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .pixel-grid-container {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .pixel-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .pixel-canvas {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            image-rendering: pixelated;
+            width: 100%;
+            height: 128px;
+            background: #f8f8f8;
+        }
+
+        .pixel-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .pixel-score {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--success);
+            text-align: center;
+        }
+
+        /* ===== VECTOR DEBUG (legacy) ===== */
+        .vector-debug-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .vector-debug-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .vector-debug-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .vector-debug-item.full-width { grid-column: 1 / -1; }
+
+        .vector-debug-canvas {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            image-rendering: pixelated;
+            width: 100%;
+            height: 120px;
+            background: #f8f8f8;
+        }
+
+        .vector-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .vector-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .v-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        /* ===== DEBUG MATRIX (legacy) ===== */
+        .debug-section {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .debug-grid-container {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .debug-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .debug-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .debug-canvas {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            image-rendering: pixelated;
+            width: 128px;
+            height: 128px;
+            background: #f8f8f8;
+        }
+
+        /* ===== LEARNED CHARACTERS BADGE ===== */
+        .learned-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--success);
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 4px;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            h1 { font-size: 1.2rem; }
+            .canvas-wrapper { max-width: 280px; max-height: 280px; }
+            .debug-canvas { width: 96px; height: 96px; }
+            .mode-btn { padding: 7px 14px; font-size: 0.8rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+<base target="_blank">
+<base target="_blank">
+</head>
+<body>
+    <h1>Kana Quest Learn</h1>
+    <p class="subtitle">Hybrid Recognition Engine v4 — Draw a character</p>
+
+    <div class="mode-toggle-section">
+        <div class="mode-toggle" id="modeToggle">
+            <button class="mode-btn active" data-mode="auto" id="modeAuto">Auto-Detect</button>
+            <button class="mode-btn" data-mode="manual" id="modeManual">Manual Check</button>
+        </div>
+    </div>
+
+    <section class="canvas-section">
+        <div class="canvas-wrapper" id="canvasWrapper">
+            <span class="guide-label">Draw here</span>
+            <div class="live-feedback-overlay" id="liveFeedback">
+                <div class="live-feedback-title">Live Guess</div>
+                <div id="liveGuessList"></div>
+            </div>
+            <canvas id="drawCanvas"></canvas>
+        </div>
+        <div class="controls" id="controlsContainer">
+            <button class="btn btn-primary hidden" id="checkBtn">Check Character</button>
+            <button class="btn btn-secondary" id="resetBtn">Clear Canvas</button>
+        </div>
+        <div class="listening-badge" id="listeningBadge" style="opacity:0;">
+            <span class="status-indicator status-listening"></span>
+            <span>Analyzing...</span>
+        </div>
+    </section>
+
+    <section class="result-section" id="resultSection">
+        <div class="result-placeholder" id="resultPlaceholder">Draw a character to see results</div>
+        <div class="top-match" id="topMatch">
+            <div class="match-char" id="matchChar">あ</div>
+            <div class="match-info">
+                <span class="match-name" id="matchName">Hiragana A</span>
+                <span class="match-reading" id="matchReading">a</span>
+                <button class="btn-speak" id="speakBtn" title="Listen to pronunciation">🔊</button>
+            </div>
+            <div class="match-confidence">Confidence: <strong id="matchConfidence">0%</strong></div>
+            <div class="stroke-meta" id="strokeMeta"></div>
+            <div class="correction-bar" id="correctionBar">
+                <div class="correction-label">Not right? Tap the correct character to teach me:</div>
+                <div class="correction-grid" id="correctionGrid"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="stats-section" id="statsSection">
+        <div class="stats-title">Top Matches</div>
+        <div class="stats-list" id="statsList"></div>
+    </section>
+
+    <section class="feature-section" id="featureSection">
+        <div class="stats-title">Feature Score Breakdown</div>
+        <div class="feature-grid" id="featureGrid"></div>
+    </section>
+
+    <section class="position-section" id="positionSection">
+        <div class="stats-title">Position Anchors: Start/End Points</div>
+        <canvas id="positionCanvas" class="position-canvas" width="400" height="160"></canvas>
+        <div class="position-legend">
+            <span><span class="legend-dot" style="background:#e74c3c"></span> Your start</span>
+            <span><span class="legend-dot" style="background:#3498db"></span> Your end</span>
+            <span><span class="legend-dot" style="background:#27ae60;border:2px solid #27ae60;background:transparent"></span> Expected start</span>
+            <span><span class="legend-dot" style="background:#f39c12;border:2px solid #f39c12;background:transparent"></span> Expected end</span>
+        </div>
+    </section>
+
+    <section class="curvature-section" id="curvatureSection">
+        <div class="stats-title">Curvature Signature</div>
+        <canvas id="curvatureCanvas" class="curvature-canvas" width="400" height="120"></canvas>
+    </section>
+
+    <section class="pixel-section" id="pixelSection">
+        <div class="stats-title">Pixel Similarity Fallback</div>
+        <div class="pixel-grid-container">
+            <div class="pixel-panel">
+                <div class="pixel-label">Your Drawing</div>
+                <canvas id="pixelUserCanvas" class="pixel-canvas" width="128" height="128"></canvas>
+            </div>
+            <div class="pixel-panel">
+                <div class="pixel-label">Best Match</div>
+                <canvas id="pixelMatchCanvas" class="pixel-canvas" width="128" height="128"></canvas>
+            </div>
+            <div class="pixel-panel">
+                <div class="pixel-label">Overlap (Green = Match)</div>
+                <canvas id="pixelOverlapCanvas" class="pixel-canvas" width="128" height="128"></canvas>
+                <div class="pixel-score" id="pixelScore">0% overlap</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="vector-debug-section" id="vectorDebugSection">
+        <div class="stats-title">Vector Engine Diagnostics</div>
+        <div class="vector-debug-grid">
+            <div class="vector-debug-item">
+                <div class="debug-label">User Stroke Vectors</div>
+                <canvas id="vectorUserCanvas" class="vector-debug-canvas" width="300" height="120"></canvas>
+            </div>
+            <div class="vector-debug-item">
+                <div class="debug-label">Reference Vectors</div>
+                <canvas id="vectorRefCanvas" class="vector-debug-canvas" width="300" height="120"></canvas>
+            </div>
+            <div class="vector-debug-item full-width">
+                <div class="debug-label">Stroke-by-Stroke Edit Distance</div>
+                <canvas id="vectorCompareCanvas" class="vector-debug-canvas" width="300" height="120"></canvas>
+            </div>
+        </div>
+        <div class="vector-legend" id="vectorLegend">
+            <span><span class="v-legend-dot" style="background:#e74c3c"></span> 0 (→)</span>
+            <span><span class="v-legend-dot" style="background:#e67e22"></span> 1 (↘)</span>
+            <span><span class="v-legend-dot" style="background:#f1c40f"></span> 2 (↓)</span>
+            <span><span class="v-legend-dot" style="background:#2ecc71"></span> 3 (↙)</span>
+            <span><span class="v-legend-dot" style="background:#3498db"></span> 4 (←)</span>
+            <span><span class="v-legend-dot" style="background:#9b59b6"></span> 5 (↖)</span>
+            <span><span class="v-legend-dot" style="background:#1abc9c"></span> 6 (↑)</span>
+            <span><span class="v-legend-dot" style="background:#34495e"></span> 7 (↗)</span>
+        </div>
+    </section>
+
+    <section class="debug-section" id="debugSection">
+        <div class="stats-title">Debug: 32×32 Normalized Matrix</div>
+        <div class="debug-grid-container">
+            <div class="debug-panel">
+                <div class="debug-label">Normalized Input</div>
+                <canvas id="debugCanvas" class="debug-canvas" width="128" height="128"></canvas>
+            </div>
+            <div class="debug-panel">
+                <div class="debug-label">Best Match Reference</div>
+                <canvas id="debugMatchCanvas" class="debug-canvas" width="128" height="128"></canvas>
+            </div>
+        </div>
+    </section>
+    <a href="validate.html" style="
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:linear-gradient(135deg,#7c3aed,#06b6d4);
+  color:#fff;
+  text-decoration:none;
+  padding:10px 18px;
+  border-radius:12px;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  font-size:0.9rem;
+  font-weight:600;
+  border:1px solid rgba(255,255,255,0.15);
+  box-shadow:0 4px 15px rgba(124,58,237,0.3);
+  transition:all 0.2s ease;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden;
+" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(124,58,237,0.4)'" 
+   onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 15px rgba(124,58,237,0.3)'"
+   onmousedown="this.style.transform='scale(0.97)'"
+   onmouseup="this.style.transform='scale(1)'">
+  <span style="font-size:1.1rem;">🔍</span>
+  <span>Stroke Validator</span>
+</a>
+<a href="validate-data.html" style="
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:linear-gradient(135deg,#ef4444,#f59e0b);
+  color:#fff;
+  text-decoration:none;
+  padding:10px 18px;
+  border-radius:12px;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  font-size:0.9rem;
+  font-weight:600;
+  border:1px solid rgba(255,255,255,0.15);
+  box-shadow:0 4px 15px rgba(239,68,68,0.3);
+  transition:all 0.2s ease;
+  cursor:pointer;
+" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(239,68,68,0.4)'" 
+   onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 15px rgba(239,68,68,0.3)'"
+   onmousedown="this.style.transform='scale(0.97)'"
+   onmouseup="this.style.transform='scale(1)'">
+  <span style="font-size:1.1rem;">🛡️</span>
+  <span>Data Validator</span>
+</a>
+<a href="data-maker.html" style="
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:linear-gradient(135deg,#22c55e,#06b6d4);
+  color:#fff;
+  text-decoration:none;
+  padding:10px 18px;
+  border-radius:12px;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  font-size:0.9rem;
+  font-weight:600;
+  border:1px solid rgba(255,255,255,0.15);
+  box-shadow:0 4px 15px rgba(34,197,94,0.3);
+  transition:all 0.2s ease;
+  cursor:pointer;
+" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(34,197,94,0.4)'" 
+   onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 15px rgba(34,197,94,0.3)'"
+   onmousedown="this.style.transform='scale(0.97)'"
+   onmouseup="this.style.transform='scale(1)'">
+  <span style="font-size:1.1rem;">✏️</span>
+  <span>Data Maker</span>
+</a>
+<a href="learn.html" style="
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:linear-gradient(135deg,#0d8f6e,#06b6d4);
+  color:#fff;
+  text-decoration:none;
+  padding:10px 18px;
+  border-radius:12px;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  font-size:0.9rem;
+  font-weight:600;
+  border:1px solid rgba(255,255,255,0.15);
+  box-shadow:0 4px 15px rgba(13,143,110,0.3);
+  transition:all 0.2s ease;
+  cursor:pointer;
+" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(13,143,110,0.4)'" 
+   onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 15px rgba(13,143,110,0.3)'"
+   onmousedown="this.style.transform='scale(0.97)'"
+   onmouseup="this.style.transform='scale(1)'">
+  <span style="font-size:1.1rem;">🎯</span>
+  <span>Learn Mode</span>
+</a>
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
