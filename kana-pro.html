@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kana Pro — Free Draw Recognition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3f4fb;
+    --panel: #ffffff;
+    --text: #1c1e2b;
+    --text-secondary: #62667a;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --border: #dfe1f0;
+    --success: #16a34a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    min-height: 100vh;
+    padding: 20px 16px 40px;
+  }
+  .jp { font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif; }
+  .app { max-width: 480px; margin: 0 auto; }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .back-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .back-link:hover { color: var(--accent); }
+  .top-bar-title { display: flex; align-items: baseline; gap: 8px; }
+  .title-mark { color: var(--accent); font-size: 1.1rem; font-weight: 700; }
+  .top-bar h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+  .top-bar-spacer { width: 90px; }
+
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    text-align: center;
+    margin: 10px 0 20px;
+  }
+
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .mode-switch {
+    display: flex;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px;
+  }
+  .mode-btn {
+    border: none;
+    background: transparent;
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .mode-btn.active { background: var(--accent); color: #fff; }
+
+  .canvas-section { margin-bottom: 16px; }
+  .canvas-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #inkCanvas, #traceOverlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  #inkCanvas { z-index: 2; }
+  #traceOverlay { z-index: 3; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; }
+  #traceOverlay.show { opacity: 1; }
+
+  .controls-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .ctrl-btn {
+    flex: 1;
+    height: 44px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ctrl-btn:hover { border-color: var(--accent); }
+  .ctrl-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ctrl-btn.primary:hover { background: var(--accent-hover); }
+  .ctrl-btn.toggled { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ctrl-btn:active { transform: scale(0.97); }
+
+  .result-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    text-align: center;
+    min-height: 92px;
+  }
+  .result-headline {
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+  .result-headline .char { color: var(--accent); font-size: 1.7rem; }
+  .result-sub { color: var(--text-secondary); font-size: 0.82rem; margin-top: 4px; }
+  .alt-list {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .alt-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+  .alt-item .alt-char { font-size: 1.1rem; color: var(--text); }
+  .result-placeholder { color: var(--text-secondary); font-size: 0.85rem; padding: 20px 0; }
+
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px 8px;
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stat-value { font-size: 1.1rem; font-weight: 700; }
+  .stat-label { font-size: 0.66rem; color: var(--text-secondary); text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="top-bar">
+    <a href="index.html" class="back-link">← Back to Kana Test</a>
+    <div class="top-bar-title">
+      <span class="title-mark jp">認識</span>
+      <h1>Kana Pro</h1>
+    </div>
+    <div class="top-bar-spacer" aria-hidden="true"></div>
+  </header>
+
+  <p class="subtitle">Draw any hiragana character, any size, anywhere on the canvas, in any stroke order. Kana Pro compares your drawing directly against the real character shapes. <em>(Prototype: recognizes あ–し, 12 characters, only.)</em></p>
+
+  <section class="mode-row">
+    <div class="mode-switch">
+      <button id="autoModeBtn" class="mode-btn active">Automatic</button>
+      <button id="manualModeBtn" class="mode-btn">Manual</button>
+    </div>
+  </section>
+
+  <section class="canvas-section">
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <canvas id="inkCanvas"></canvas>
+      <canvas id="traceOverlay"></canvas>
+    </div>
+  </section>
+
+  <section class="controls-row">
+    <button id="undoBtn" class="ctrl-btn">Undo</button>
+    <button id="clearBtn" class="ctrl-btn">Clear</button>
+    <button id="traceBtn" class="ctrl-btn">Show Trace</button>
+    <button id="checkBtn" class="ctrl-btn primary">Check</button>
+  </section>
+
+  <section class="result-panel" id="resultPanel">
+    <div class="result-placeholder">Draw a character to see what Kana Pro thinks it is.</div>
+  </section>
+
+  <section class="stats-bar">
+    <div class="stat">
+      <span class="stat-value" id="statLastMatch">–</span>
+      <span class="stat-label">Last match</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statConfidence">–</span>
+      <span class="stat-label">Confidence</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statAttempts">0</span>
+      <span class="stat-label">Checks run</span>
+    </div>
+  </section>
+
+</div>
+
+<script src="kana-pro-data.js"></script>
+<script>
+// ==================== KANA PRO ====================
+// Shape-based recognition: candidates are rendered live from a real font,
+// never from hand-authored stroke data. See FIX_PROMPT_kana_pro.md for the
+// full design rationale.
+
+const KP_CONFIG = {
+    FRAME: 96,               // normalization/scoring resolution (square)
+    FILL_RATIO: 0.8,          // how much of the frame the normalized shape should fill
+    INK_SCORE_WIDTH: 6,       // fixed canonical width used ONLY for scoring (thickness-invariant)
+    MIN_BBOX_SIZE: 15,        // ignore recognition attempts on a too-small/empty drawing
+    TOP_N: 5,
+    FONT_FAMILY: "'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif"
+};
+
+// ---- DOM ----
+const canvasWrapper = document.getElementById('canvasWrapper');
+const inkCanvas = document.getElementById('inkCanvas');
+const traceOverlay = document.getElementById('traceOverlay');
+const inkCtx = inkCanvas.getContext('2d', { willReadFrequently: true });
+const traceCtx = traceOverlay.getContext('2d');
+
+const autoModeBtn = document.getElementById('autoModeBtn');
+const manualModeBtn = document.getElementById('manualModeBtn');
+const undoBtn = document.getElementById('undoBtn');
+const clearBtn = document.getElementById('clearBtn');
+const checkBtn = document.getElementById('checkBtn');
+const traceBtn = document.getElementById('traceBtn');
+const resultPanel = document.getElementById('resultPanel');
+const statLastMatch = document.getElementById('statLastMatch');
+const statConfidence = document.getElementById('statConfidence');
+const statAttempts = document.getElementById('statAttempts');
+
+// ---- State ----
+let dpr = window.devicePixelRatio || 1;
+let lastCanvasWidth = 0;
+let allStrokes = [];
+let currentStroke = [];
+let isDrawing = false;
+let autoMode = true;
+let traceVisible = false;
+let attempts = 0;
+let lastResults = [];
+let fontReady = false;
+
+// Precomputed candidate glyph masks: char -> Uint8Array(FRAME*FRAME) of 0/1
+const candidateMasks = new Map();
+
+// ==================== FONT LOADING ====================
+// Rendering candidates before the webfont finishes loading would silently
+// score against fallback tofu boxes — always wait for document.fonts.ready.
+async function waitForFont() {
+    try {
+        await document.fonts.load(`${KP_CONFIG.FRAME}px ${KP_CONFIG.FONT_FAMILY}`);
+        await document.fonts.ready;
+    } catch (e) {
+        console.warn('Font loading check failed, proceeding anyway:', e);
+    }
+    fontReady = true;
+}
+
+// ==================== CANVAS SETUP ====================
+function initCanvases() {
+    const rect = canvasWrapper.getBoundingClientRect();
+    const cssW = rect.width, cssH = rect.height;
+
+    [inkCanvas, traceOverlay].forEach(c => {
+        c.width = cssW * dpr;
+        c.height = cssH * dpr;
+        c.style.width = cssW + 'px';
+        c.style.height = cssH + 'px';
+    });
+
+    inkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    inkCtx.lineCap = 'round';
+    inkCtx.lineJoin = 'round';
+    inkCtx.strokeStyle = '#1c1e2b';
+    inkCtx.lineWidth = cssW * 0.045;
+
+    traceCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    lastCanvasWidth = cssW;
+    redrawInk();
+}
+
+// Only reinit on a genuine width change — mobile browsers fire 'resize'
+// purely from the address bar hiding/showing while scrolling, which changes
+// height but not width. Reacting to that wipes the user's drawing.
+let resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        const newWidth = canvasWrapper.getBoundingClientRect().width;
+        if (Math.abs(newWidth - lastCanvasWidth) < 2) return;
+        initCanvases();
+    }, 150);
+});
+
+// ==================== DRAWING ====================
+function getPointerPos(e) {
+    const rect = inkCanvas.getBoundingClientRect();
+    const t = (e.touches && e.touches[0]) || e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+}
+
+function startStroke(e) {
+    if (e.cancelable) e.preventDefault();
+    isDrawing = true;
+    const pos = getPointerPos(e);
+    currentStroke = [pos];
+    inkCtx.beginPath();
+    inkCtx.moveTo(pos.x, pos.y);
+    hideTrace();
+}
+function moveStroke(e) {
+    if (!isDrawing) return;
+    if (e.cancelable) e.preventDefault();
+    const pos = getPointerPos(e);
+    currentStroke.push(pos);
+    inkCtx.lineTo(pos.x, pos.y);
+    inkCtx.stroke();
+}
+function endStroke(e) {
+    if (!isDrawing) return;
+    if (e.cancelable) e.preventDefault();
+    isDrawing = false;
+    if (currentStroke.length >= 2) {
+        allStrokes.push([...currentStroke]);
+        if (autoMode) runRecognition();
+    }
+    currentStroke = [];
+}
+
+inkCanvas.addEventListener('mousedown', startStroke);
+inkCanvas.addEventListener('mousemove', moveStroke);
+inkCanvas.addEventListener('mouseup', endStroke);
+inkCanvas.addEventListener('mouseleave', endStroke);
+inkCanvas.addEventListener('touchstart', startStroke, { passive: false });
+inkCanvas.addEventListener('touchmove', moveStroke, { passive: false });
+inkCanvas.addEventListener('touchend', endStroke, { passive: false });
+inkCanvas.addEventListener('touchcancel', endStroke, { passive: false });
+
+function redrawInk() {
+    const cssW = canvasWrapper.getBoundingClientRect().width;
+    const cssH = canvasWrapper.getBoundingClientRect().height;
+    inkCtx.clearRect(0, 0, cssW, cssH);
+    inkCtx.lineWidth = cssW * 0.045;
+    allStrokes.forEach(stroke => {
+        if (stroke.length < 2) return;
+        inkCtx.beginPath();
+        stroke.forEach((p, i) => i === 0 ? inkCtx.moveTo(p.x, p.y) : inkCtx.lineTo(p.x, p.y));
+        inkCtx.stroke();
+    });
+}
+
+// ==================== NORMALIZATION HELPERS ====================
+function getStrokesBBox(strokes) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    strokes.forEach(s => s.forEach(p => {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+    }));
+    return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}
+
+// Render the user's stroke paths, normalized (position/size-invariant) and
+// at a FIXED canonical width (thickness-invariant), into a FRAME x FRAME
+// binary mask.
+function rasterizeUserMask(strokes) {
+    const bbox = getStrokesBBox(strokes);
+    const F = KP_CONFIG.FRAME;
+    const canvas = document.createElement('canvas');
+    canvas.width = F; canvas.height = F;
+    const ctx = canvas.getContext('2d');
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = KP_CONFIG.INK_SCORE_WIDTH;
+
+    const longest = Math.max(bbox.w, bbox.h) || 1;
+    const scale = (F * KP_CONFIG.FILL_RATIO) / longest;
+    const cx = (bbox.minX + bbox.maxX) / 2;
+    const cy = (bbox.minY + bbox.maxY) / 2;
+    const offX = F / 2, offY = F / 2;
+
+    strokes.forEach(stroke => {
+        if (stroke.length < 2) return;
+        ctx.beginPath();
+        stroke.forEach((p, i) => {
+            const x = (p.x - cx) * scale + offX;
+            const y = (p.y - cy) * scale + offY;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    });
+
+    return maskFromCanvas(canvas, F);
+}
+
+function maskFromCanvas(canvas, size) {
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, size, size).data;
+    const mask = new Uint8Array(size * size);
+    for (let i = 0; i < size * size; i++) {
+        mask[i] = data[i * 4 + 3] > 10 ? 1 : 0; // alpha channel
+    }
+    return mask;
+}
+
+// Render a candidate character, then measure its ACTUAL ink pixel bounding
+// box and re-render normalized into it — this avoids relying on font-metric
+// quirks (measureText's actualBoundingBox support varies) and uses the same
+// "render once, measure pixels, re-render normalized" approach for both the
+// user's ink and every candidate glyph, so both sides are normalized the
+// same way.
+function rasterizeGlyphMask(char) {
+    const F = KP_CONFIG.FRAME;
+    const scratch = document.createElement('canvas');
+    scratch.width = F; scratch.height = F;
+    const sctx = scratch.getContext('2d');
+    sctx.fillStyle = '#000';
+    sctx.textAlign = 'center';
+    sctx.textBaseline = 'middle';
+    sctx.font = `${Math.round(F * 0.85)}px ${KP_CONFIG.FONT_FAMILY}`;
+    sctx.fillText(char, F / 2, F / 2);
+
+    const data = sctx.getImageData(0, 0, F, F).data;
+    let minX = F, minY = F, maxX = 0, maxY = 0, found = false;
+    for (let y = 0; y < F; y++) {
+        for (let x = 0; x < F; x++) {
+            if (data[(y * F + x) * 4 + 3] > 10) {
+                found = true;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+    if (!found) return new Uint8Array(F * F); // font didn't render this glyph
+
+    const bboxW = maxX - minX, bboxH = maxY - minY;
+    const longest = Math.max(bboxW, bboxH) || 1;
+    const scale = (F * KP_CONFIG.FILL_RATIO) / longest;
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = F; canvas.height = F;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.translate(F / 2, F / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${Math.round(F * 0.85)}px ${KP_CONFIG.FONT_FAMILY}`;
+    ctx.fillText(char, F / 2, F / 2);
+    ctx.restore();
+
+    return maskFromCanvas(canvas, F);
+}
+
+function precomputeCandidateMasks() {
+    KANA_PRO_DATASET.forEach(entry => {
+        candidateMasks.set(entry.char, rasterizeGlyphMask(entry.char));
+    });
+}
+
+// ==================== MATCHING ====================
+function iou(maskA, maskB) {
+    let intersection = 0, union = 0;
+    for (let i = 0; i < maskA.length; i++) {
+        const a = maskA[i], b = maskB[i];
+        if (a && b) intersection++;
+        if (a || b) union++;
+    }
+    return union > 0 ? intersection / union : 0;
+}
+
+function runRecognition() {
+    if (!fontReady || allStrokes.length === 0) return;
+    const bbox = getStrokesBBox(allStrokes);
+    if (bbox.w < KP_CONFIG.MIN_BBOX_SIZE && bbox.h < KP_CONFIG.MIN_BBOX_SIZE) return;
+
+    const userMask = rasterizeUserMask(allStrokes);
+    const scores = KANA_PRO_DATASET.map(entry => ({
+        char: entry.char,
+        reading: entry.reading,
+        name: entry.name,
+        score: iou(userMask, candidateMasks.get(entry.char))
+    }));
+    scores.sort((a, b) => b.score - a.score);
+    lastResults = scores.slice(0, KP_CONFIG.TOP_N);
+
+    attempts++;
+    displayResults(lastResults);
+}
+
+function displayResults(results) {
+    if (!results || results.length === 0) return;
+    const top = results[0];
+    const confidencePct = Math.round(top.score * 100);
+
+    resultPanel.innerHTML = `
+        <div class="result-headline">This looks like <span class="char jp">${top.char}</span> (${top.reading})</div>
+        <div class="result-sub">${confidencePct}% shape match</div>
+        <div class="alt-list">
+            ${results.slice(1).map(r => `
+                <div class="alt-item">
+                    <span class="alt-char jp">${r.char}</span>
+                    <span>${r.reading} · ${Math.round(r.score * 100)}%</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    statLastMatch.textContent = `${top.char} (${top.reading})`;
+    statConfidence.textContent = confidencePct + '%';
+    statAttempts.textContent = attempts;
+}
+
+function resetResultsDisplay() {
+    resultPanel.innerHTML = '<div class="result-placeholder">Draw a character to see what Kana Pro thinks it is.</div>';
+}
+
+// ==================== SHOW TRACE ====================
+// Purely visual — overlays the current top match's real glyph so the user
+// can compare. Must never influence scoring.
+function drawTraceOverlay() {
+    const cssW = canvasWrapper.getBoundingClientRect().width;
+    const cssH = canvasWrapper.getBoundingClientRect().height;
+    traceCtx.clearRect(0, 0, cssW, cssH);
+    if (!lastResults.length) return;
+
+    const char = lastResults[0].char;
+    traceCtx.fillStyle = 'rgba(79,70,229,0.25)';
+    traceCtx.textAlign = 'center';
+    traceCtx.textBaseline = 'middle';
+    traceCtx.font = `${Math.round(Math.min(cssW, cssH) * 0.7)}px ${KP_CONFIG.FONT_FAMILY}`;
+    traceCtx.fillText(char, cssW / 2, cssH / 2);
+}
+function hideTrace() {
+    traceVisible = false;
+    traceOverlay.classList.remove('show');
+    traceBtn.classList.remove('toggled');
+}
+
+// ==================== CONTROLS ====================
+undoBtn.addEventListener('click', () => {
+    allStrokes.pop();
+    redrawInk();
+    hideTrace();
+    if (allStrokes.length === 0) {
+        resetResultsDisplay();
+    } else if (autoMode) {
+        runRecognition();
+    }
+});
+
+clearBtn.addEventListener('click', () => {
+    allStrokes = [];
+    currentStroke = [];
+    redrawInk();
+    hideTrace();
+    resetResultsDisplay();
+});
+
+checkBtn.addEventListener('click', () => runRecognition());
+
+traceBtn.addEventListener('click', () => {
+    if (!lastResults.length) return;
+    traceVisible = !traceVisible;
+    if (traceVisible) {
+        drawTraceOverlay();
+        traceOverlay.classList.add('show');
+        traceBtn.classList.add('toggled');
+    } else {
+        traceOverlay.classList.remove('show');
+        traceBtn.classList.remove('toggled');
+    }
+});
+
+autoModeBtn.addEventListener('click', () => {
+    autoMode = true;
+    autoModeBtn.classList.add('active');
+    manualModeBtn.classList.remove('active');
+});
+manualModeBtn.addEventListener('click', () => {
+    autoMode = false;
+    manualModeBtn.classList.add('active');
+    autoModeBtn.classList.remove('active');
+});
+
+// ==================== INIT ====================
+async function init() {
+    initCanvases();
+    await waitForFont();
+    precomputeCandidateMasks();
+}
+init();
+</script>
+</body>
+</html>
