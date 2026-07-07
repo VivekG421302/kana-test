@@ -157,7 +157,7 @@
 
   .stats-bar {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
     background: var(--panel);
     border: 1px solid var(--border);
@@ -182,7 +182,7 @@
     <div class="top-bar-spacer" aria-hidden="true"></div>
   </header>
 
-  <p class="subtitle">Draw any hiragana character, any size, anywhere on the canvas, in any stroke order. Kana Pro compares your drawing directly against the real character shapes. <em>(Prototype: recognizes あ–し, 12 characters, only.)</em></p>
+  <p class="subtitle">Draw any hiragana, katakana, or basic kanji character, any size, anywhere on the canvas, in any stroke order. Kana Pro compares your drawing directly against the real character shapes. <em>(70 characters: 46 hiragana, 12 katakana, 12 kanji.)</em></p>
 
   <section class="mode-row">
     <div class="mode-switch">
@@ -222,6 +222,10 @@
       <span class="stat-value" id="statAttempts">0</span>
       <span class="stat-label">Checks run</span>
     </div>
+    <div class="stat">
+      <span class="stat-value" id="statPool">–</span>
+      <span class="stat-label">Candidates scored</span>
+    </div>
   </section>
 
 </div>
@@ -230,8 +234,18 @@
 <script>
 // ==================== KANA PRO ====================
 // Shape-based recognition: candidates are rendered live from a real font,
-// never from hand-authored stroke data. See FIX_PROMPT_kana_pro.md for the
-// full design rationale.
+// never from hand-authored stroke data.
+//
+// Scale architecture: a cascaded filter funnel (see buildCandidatePool)
+// extracts macro-structural features — stroke count, column/peak count,
+// raw aspect ratio — from the user's UN-normalized strokes and uses them to
+// hard-gate the full character pool down to a small, structurally
+// compatible subset BEFORE any expensive per-pixel IoU mask comparison
+// runs. This is what lets the dataset grow from a 12-character prototype to
+// a 70-character vocabulary (and beyond) without every check paying the
+// cost of scoring the entire pool, and without visually-scaled-up shapes
+// (e.g. 1-stroke し vs 2-stroke い) getting confused once normalized into
+// the same square scoring frame.
 
 const KP_CONFIG = {
     FRAME: 96,               // normalization/scoring resolution (square)
@@ -259,6 +273,7 @@ const resultPanel = document.getElementById('resultPanel');
 const statLastMatch = document.getElementById('statLastMatch');
 const statConfidence = document.getElementById('statConfidence');
 const statAttempts = document.getElementById('statAttempts');
+const statPool = document.getElementById('statPool');
 
 // ---- State ----
 let dpr = window.devicePixelRatio || 1;
@@ -270,6 +285,7 @@ let autoMode = true;
 let traceVisible = false;
 let attempts = 0;
 let lastResults = [];
+let lastPoolSize = 0;
 let fontReady = false;
 
 // Precomputed candidate glyph masks: char -> Uint8Array(FRAME*FRAME) of 0/1
@@ -585,6 +601,67 @@ function precomputeCandidateMasks() {
     });
 }
 
+// ==================== CASCADED FILTER FUNNEL ====================
+// The global candidate pool (70 characters and growing) is too big to run
+// expensive per-pixel IoU masks against on every stroke. Before any of that
+// happens, we extract macro-structural features from the RAW, un-normalized
+// strokes and use them to hard-gate the pool down to a small structurally
+// compatible subset. Each stage only ever narrows the pool coming out of the
+// stage before it, and each stage has a graceful fallback so an overly
+// aggressive gate can never zero out the candidate list entirely.
+function buildCandidatePool(uStrokes, uPeaks, uAspect) {
+    // ---- Stage 1: stroke count filter (+/-1 tolerance) ----
+    // A 3-stroke drawing has no business being compared against a 1-stroke
+    // glyph like く or し — discard those candidates before anything else.
+    let strokeFiltered = KANA_PRO_DATASET.filter(
+        c => Math.abs(uStrokes - c.strokes) <= 1
+    );
+
+    if (strokeFiltered.length === 0) {
+        // Nothing survives even the loosest gate (e.g. a very sloppy, over-
+        // segmented drawing). Fall back to the 5 structurally closest
+        // candidates by raw stroke-count distance rather than returning
+        // nothing.
+        const byStrokeDistance = [...KANA_PRO_DATASET].sort(
+            (a, b) => Math.abs(uStrokes - a.strokes) - Math.abs(uStrokes - b.strokes)
+        );
+        return { pool: byStrokeDistance.slice(0, 5), stage: 'fallback: top 5 by stroke distance' };
+    }
+
+    // ---- Stage 2: column / peak filter (the "し vs い" solver) ----
+    // 1 peak means a single continuous stroke shape (し, く, つ...); 2 peaks
+    // means two distinct side-by-side columns of ink (い, り, は...). These
+    // two groups should never cross-contaminate each other's candidate pool.
+    const peakFiltered = uPeaks <= 1
+        ? strokeFiltered.filter(c => c.columns !== 2)
+        : strokeFiltered.filter(c => c.columns !== 1);
+
+    if (peakFiltered.length === 0) {
+        // The peak filter was too aggressive for this dataset slice — drop
+        // it and fall back to the stroke-count-filtered pool.
+        return { pool: strokeFiltered, stage: 'fallback: stroke count only (peak filter emptied pool)' };
+    }
+
+    // ---- Stage 3: aspect ratio hard filter ----
+    // A distinctly tall drawing (uAspect < 0.75) should never be scored
+    // against an inherently wide glyph like こ, and vice versa for a
+    // distinctly wide drawing (uAspect > 1.3). Roughly square drawings are
+    // ambiguous enough that we don't gate on aspect at all.
+    let aspectFiltered = peakFiltered;
+    if (uAspect < 0.75) {
+        aspectFiltered = peakFiltered.filter(c => c.aspect !== 'wide');
+    } else if (uAspect > 1.3) {
+        aspectFiltered = peakFiltered.filter(c => c.aspect !== 'tall');
+    }
+
+    if (aspectFiltered.length === 0) {
+        // Aspect filter was too aggressive — drop it, keep stroke+peak.
+        return { pool: peakFiltered, stage: 'fallback: stroke+peak only (aspect filter emptied pool)' };
+    }
+
+    return { pool: aspectFiltered, stage: 'full cascade (stroke+peak+aspect)' };
+}
+
 function runRecognition() {
     if (!fontReady || allStrokes.length === 0) return;
     const bbox = getStrokesBBox(allStrokes);
@@ -598,7 +675,12 @@ function runRecognition() {
     const uAspect  = rawAspect(allStrokes);
     const uStrokes = allStrokes.length;
 
-    const scores = KANA_PRO_DATASET.map(entry => {
+    // Prune the global 70-character pool down to a structurally compatible
+    // subset BEFORE any pixel-mask scoring happens.
+    const { pool: candidatePool, stage: filterStage } = buildCandidatePool(uStrokes, uPeaks, uAspect);
+    console.debug(`[Kana Pro] funnel: ${candidatePool.length}/${KANA_PRO_DATASET.length} candidates (${filterStage})`);
+
+    const scores = candidatePool.map(entry => {
         const refMask  = candidateMasks.get(entry.char);
         const refExtra = candidateExtras.get(entry.char);
 
@@ -620,11 +702,12 @@ function runRecognition() {
         const aspectDiff  = Math.abs(uAspect - refExtra.aspect);
         const scoreAspect = 1 / (1 + aspectDiff * 2);
 
-        // 6. Stroke count agreement — soft bonus, never hard-gates.
-        //    We don't know the "expected" stroke count from data, so we use
-        //    the peak count as a proxy. But we also expose uStrokes directly.
-        //    For い (2 strokes) vs し (1 stroke) this is decisive.
-        const strokeDiff  = Math.abs(uStrokes - refExtra.peaks);
+        // 6. Stroke count agreement — soft bonus, never hard-gates here
+        //    (the hard gating already happened in buildCandidatePool). Now
+        //    uses the real canonical stroke count from the dataset rather
+        //    than a peak-count proxy. For い (2 strokes) vs し (1 stroke)
+        //    this is decisive.
+        const strokeDiff  = Math.abs(uStrokes - entry.strokes);
         const scoreStroke = 1 / (1 + strokeDiff * 1.2);
 
         // Weighted combination
@@ -649,6 +732,7 @@ function runRecognition() {
 
     scores.sort((a, b) => b.score - a.score);
     lastResults = scores.slice(0, KP_CONFIG.TOP_N);
+    lastPoolSize = candidatePool.length;
 
     attempts++;
     displayResults(lastResults);
@@ -675,10 +759,12 @@ function displayResults(results) {
     statLastMatch.textContent = `${top.char} (${top.reading})`;
     statConfidence.textContent = confidencePct + '%';
     statAttempts.textContent = attempts;
+    statPool.textContent = `${lastPoolSize} / ${KANA_PRO_DATASET.length}`;
 }
 
 function resetResultsDisplay() {
     resultPanel.innerHTML = '<div class="result-placeholder">Draw a character to see what Kana Pro thinks it is.</div>';
+    statPool.textContent = '–';
 }
 
 // ==================== SHOW TRACE ====================
