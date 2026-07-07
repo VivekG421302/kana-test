@@ -490,13 +490,8 @@ function rasterizeGlyphMask(char) {
     return maskFromCanvas(canvas, F);
 }
 
-function precomputeCandidateMasks() {
-    KANA_PRO_DATASET.forEach(entry => {
-        candidateMasks.set(entry.char, rasterizeGlyphMask(entry.char));
-    });
-}
-
 // ==================== MATCHING ====================
+
 function iou(maskA, maskB) {
     let intersection = 0, union = 0;
     for (let i = 0; i < maskA.length; i++) {
@@ -507,18 +502,151 @@ function iou(maskA, maskB) {
     return union > 0 ? intersection / union : 0;
 }
 
+// Horizontal projection: for each row, fraction of pixels that are ink.
+// Captures where ink sits vertically — distinguishes い (two columns of ink
+// that each project onto many rows) from し (one column).
+function hProjection(mask, F) {
+    const proj = new Float32Array(F);
+    for (let y = 0; y < F; y++) {
+        let count = 0;
+        for (let x = 0; x < F; x++) if (mask[y * F + x]) count++;
+        proj[y] = count / F;
+    }
+    return proj;
+}
+
+// Vertical projection: for each column, fraction of pixels that are ink.
+// Captures horizontal spread of ink — い has two peaks (left stroke, right
+// stroke) while し has one peak (single stroke).
+function vProjection(mask, F) {
+    const proj = new Float32Array(F);
+    for (let x = 0; x < F; x++) {
+        let count = 0;
+        for (let y = 0; y < F; y++) if (mask[y * F + x]) count++;
+        proj[x] = count / F;
+    }
+    return proj;
+}
+
+// Count distinct ink columns (peaks in vertical projection).
+// い ≈ 2 peaks, し ≈ 1 peak. Normalised to [0,1] relative to half the frame.
+function peakCount(proj) {
+    const threshold = 0.04;
+    let inPeak = false, peaks = 0;
+    for (let i = 0; i < proj.length; i++) {
+        if (proj[i] > threshold && !inPeak) { inPeak = true; peaks++; }
+        else if (proj[i] <= threshold) inPeak = false;
+    }
+    return peaks;
+}
+
+// L2 distance between two Float32Arrays, normalised to [0,1] similarity.
+function projSimilarity(a, b) {
+    let sum = 0;
+    for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2;
+    return 1 / (1 + Math.sqrt(sum));
+}
+
+// Raw aspect ratio of the user's ink bounding box (width/height, clamped).
+// Doesn't go through normalization — tells us if the drawing is wide or tall.
+function rawAspect(strokes) {
+    const bb = getStrokesBBox(strokes);
+    const w = Math.max(bb.w, 1), h = Math.max(bb.h, 1);
+    return w / h;   // <1 = tall, >1 = wide
+}
+
+// Aspect ratio of a glyph mask (ink bbox width / height).
+function maskAspect(mask, F) {
+    let minX = F, maxX = 0, minY = F, maxY = 0, found = false;
+    for (let y = 0; y < F; y++) for (let x = 0; x < F; x++) {
+        if (mask[y * F + x]) {
+            found = true;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+    }
+    if (!found) return 1;
+    return Math.max(maxX - minX, 1) / Math.max(maxY - minY, 1);
+}
+
+// Precomputed per-candidate extras (projection + aspect) stored alongside masks.
+const candidateExtras = new Map(); // char -> { hProj, vProj, peaks, aspect }
+
+function precomputeCandidateMasks() {
+    const F = KP_CONFIG.FRAME;
+    KANA_PRO_DATASET.forEach(entry => {
+        const mask   = rasterizeGlyphMask(entry.char);
+        const hProj  = hProjection(mask, F);
+        const vProj  = vProjection(mask, F);
+        const peaks  = peakCount(vProj);
+        const aspect = maskAspect(mask, F);
+        candidateMasks.set(entry.char, mask);
+        candidateExtras.set(entry.char, { hProj, vProj, peaks, aspect });
+    });
+}
+
 function runRecognition() {
     if (!fontReady || allStrokes.length === 0) return;
     const bbox = getStrokesBBox(allStrokes);
     if (bbox.w < KP_CONFIG.MIN_BBOX_SIZE && bbox.h < KP_CONFIG.MIN_BBOX_SIZE) return;
 
+    const F        = KP_CONFIG.FRAME;
     const userMask = rasterizeUserMask(allStrokes);
-    const scores = KANA_PRO_DATASET.map(entry => ({
-        char: entry.char,
-        reading: entry.reading,
-        name: entry.name,
-        score: iou(userMask, candidateMasks.get(entry.char))
-    }));
+    const uHProj   = hProjection(userMask, F);
+    const uVProj   = vProjection(userMask, F);
+    const uPeaks   = peakCount(uVProj);
+    const uAspect  = rawAspect(allStrokes);
+    const uStrokes = allStrokes.length;
+
+    const scores = KANA_PRO_DATASET.map(entry => {
+        const refMask  = candidateMasks.get(entry.char);
+        const refExtra = candidateExtras.get(entry.char);
+
+        // 1. IoU — overall shape overlap (primary signal)
+        const scoreIoU = iou(userMask, refMask);
+
+        // 2. Horizontal projection similarity — vertical ink distribution
+        const scoreHProj = projSimilarity(uHProj, refExtra.hProj);
+
+        // 3. Vertical projection similarity — horizontal ink distribution
+        const scoreVProj = projSimilarity(uVProj, refExtra.vProj);
+
+        // 4. Peak agreement — how many distinct vertical ink columns?
+        //    Similarity = 1 if counts match, decays with difference.
+        const peakDiff    = Math.abs(uPeaks - refExtra.peaks);
+        const scorePeaks  = 1 / (1 + peakDiff * 1.5);
+
+        // 5. Aspect ratio agreement — tall/wide match.
+        const aspectDiff  = Math.abs(uAspect - refExtra.aspect);
+        const scoreAspect = 1 / (1 + aspectDiff * 2);
+
+        // 6. Stroke count agreement — soft bonus, never hard-gates.
+        //    We don't know the "expected" stroke count from data, so we use
+        //    the peak count as a proxy. But we also expose uStrokes directly.
+        //    For い (2 strokes) vs し (1 stroke) this is decisive.
+        const strokeDiff  = Math.abs(uStrokes - refExtra.peaks);
+        const scoreStroke = 1 / (1 + strokeDiff * 1.2);
+
+        // Weighted combination
+        // IoU is the main backbone; projections and peaks discriminate
+        // visually-similar characters; aspect breaks width-height ambiguity;
+        // stroke count is a soft tiebreaker.
+        const combined =
+            0.45 * scoreIoU    +
+            0.15 * scoreHProj  +
+            0.15 * scoreVProj  +
+            0.12 * scorePeaks  +
+            0.08 * scoreAspect +
+            0.05 * scoreStroke;
+
+        return {
+            char:    entry.char,
+            reading: entry.reading,
+            name:    entry.name,
+            score:   combined,
+        };
+    });
+
     scores.sort((a, b) => b.score - a.score);
     lastResults = scores.slice(0, KP_CONFIG.TOP_N);
 
