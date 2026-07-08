@@ -47,32 +47,228 @@
   .top-bar h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
   .top-bar-spacer { width: 90px; display: flex; justify-content: flex-end; }
 
-  .practice-select {
+  .practice-circle {
     appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: 1.5px solid var(--border);
     background: var(--panel);
     color: var(--text-secondary);
     font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     line-height: 1;
-    text-align: center;
-    text-align-last: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     padding: 0;
-    outline: none;
-    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.1s ease;
   }
-  .practice-select:hover { border-color: var(--accent); }
-  .practice-select.active {
+  .practice-circle:hover { border-color: var(--accent); transform: scale(1.06); }
+  .practice-circle.active {
     border-color: var(--accent);
     color: var(--accent);
     font-weight: 700;
     background: var(--accent-soft, #eef0fd);
+  }
+
+  /* ---- Practice character picker modal ---- */
+  .practice-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 21, 36, 0.5);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+    animation: practiceFadeIn 0.15s ease;
+  }
+  .practice-modal-overlay[hidden] { display: none; }
+  @keyframes practiceFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .practice-modal {
+    background: var(--panel);
+    border-radius: 18px;
+    width: 100%;
+    max-width: 520px;
+    max-height: min(680px, 88vh);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(20, 21, 36, 0.35);
+    overflow: hidden;
+    animation: practiceSlideUp 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  @keyframes practiceSlideUp {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .practice-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .practice-modal-header h2 { font-size: 1.05rem; font-weight: 700; }
+  .practice-modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .practice-modal-close:hover { background: var(--bg); color: var(--text); }
+
+  .practice-modal-controls {
+    display: flex;
+    gap: 10px;
+    padding: 16px 20px 0;
+    flex-shrink: 0;
+  }
+  .practice-search-wrap {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+  }
+  .practice-search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+  .practice-search {
+    width: 100%;
+    padding: 10px 12px 10px 34px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.92rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .practice-search:focus { border-color: var(--accent); }
+
+  .practice-random-btn {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .practice-random-btn:hover { border-color: var(--accent); background: var(--accent-soft, #eef0fd); }
+
+  .practice-filter-row {
+    display: flex;
+    gap: 8px;
+    padding: 14px 20px 0;
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .filter-chip {
+    padding: 6px 13px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border);
+    background: var(--panel);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  }
+  .filter-chip:hover { border-color: var(--accent); }
+  .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip-count { opacity: 0.7; font-weight: 500; }
+
+  .practice-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .practice-grid[hidden] { display: none; }
+  .practice-grid-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 4px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease, transform 0.08s ease;
+  }
+  .practice-grid-item:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .practice-grid-item.selected { border-color: var(--accent); background: var(--accent-soft, #eef0fd); }
+  .practice-grid-item .grid-char { font-size: 1.3rem; color: var(--text); font-family: 'Noto Sans JP', sans-serif; }
+  .practice-grid-item .grid-reading { font-size: 0.65rem; color: var(--text-secondary); }
+
+  .practice-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+  }
+
+  .practice-modal-footer {
+    padding: 14px 20px 18px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .practice-clear-btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .practice-clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  @media (max-width: 560px) {
+    .practice-modal-overlay { padding: 0; align-items: flex-end; }
+    .practice-modal {
+      max-width: 100%;
+      max-height: 85vh;
+      border-radius: 18px 18px 0 0;
+      animation: practiceSlideUpMobile 0.2s ease;
+    }
+    @keyframes practiceSlideUpMobile {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
+    }
+    .practice-grid { grid-template-columns: repeat(5, 1fr); }
+    .practice-modal-controls { flex-wrap: wrap; }
   }
 
   .subtitle {
@@ -208,9 +404,7 @@
       <h1>Kana Pro</h1>
     </div>
     <div class="top-bar-spacer">
-      <select id="practiceSelect" class="practice-select" title="Practice a specific character — locks the trace guide to it">
-        <option value="">–</option>
-      </select>
+      <button id="practiceCircle" class="practice-circle" type="button" title="Practice a specific character" aria-haspopup="dialog">–</button>
     </div>
   </header>
 
@@ -262,6 +456,40 @@
 
 </div>
 
+<div class="practice-modal-overlay" id="practiceModalOverlay" hidden>
+  <div class="practice-modal" role="dialog" aria-modal="true" aria-labelledby="practiceModalTitle">
+    <div class="practice-modal-header">
+      <h2 id="practiceModalTitle">Practice a character</h2>
+      <button type="button" class="practice-modal-close" id="practiceModalClose" aria-label="Close">×</button>
+    </div>
+
+    <div class="practice-modal-controls">
+      <div class="practice-search-wrap">
+        <svg class="practice-search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="21" y1="21" x2="16.2" y2="16.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="practiceSearch" class="practice-search" placeholder="Search character or reading…" autocomplete="off" />
+      </div>
+      <button type="button" id="practiceRandomBtn" class="practice-random-btn">🎲 Random</button>
+    </div>
+
+    <div class="practice-filter-row" id="practiceFilterRow">
+      <button type="button" class="filter-chip active" data-filter="all">All <span class="chip-count"></span></button>
+      <button type="button" class="filter-chip" data-filter="Hiragana">Hiragana</button>
+      <button type="button" class="filter-chip" data-filter="Katakana">Katakana</button>
+      <button type="button" class="filter-chip" data-filter="Kanji">Kanji</button>
+    </div>
+
+    <div class="practice-grid" id="practiceGrid"></div>
+    <div class="practice-empty" id="practiceEmpty" hidden>No characters match your search.</div>
+
+    <div class="practice-modal-footer">
+      <button type="button" id="practiceClearBtn" class="practice-clear-btn">Clear selection (practice off)</button>
+    </div>
+  </div>
+</div>
+
 <script src="kana-pro-data.js"></script>
 <script>
 // ==================== KANA PRO ====================
@@ -306,7 +534,15 @@ const statLastMatch = document.getElementById('statLastMatch');
 const statConfidence = document.getElementById('statConfidence');
 const statAttempts = document.getElementById('statAttempts');
 const statPool = document.getElementById('statPool');
-const practiceSelect = document.getElementById('practiceSelect');
+const practiceCircle = document.getElementById('practiceCircle');
+const practiceModalOverlay = document.getElementById('practiceModalOverlay');
+const practiceModalClose = document.getElementById('practiceModalClose');
+const practiceSearch = document.getElementById('practiceSearch');
+const practiceRandomBtn = document.getElementById('practiceRandomBtn');
+const practiceFilterRow = document.getElementById('practiceFilterRow');
+const practiceGrid = document.getElementById('practiceGrid');
+const practiceEmpty = document.getElementById('practiceEmpty');
+const practiceClearBtn = document.getElementById('practiceClearBtn');
 
 // ---- State ----
 let dpr = window.devicePixelRatio || 1;
@@ -868,43 +1104,113 @@ traceBtn.addEventListener('click', () => {
 });
 
 // ==================== PRACTICE CHARACTER LOCK ====================
-// The tiny circular selector in the top bar. Empty (default "–" option) =
-// nothing selected, everything behaves exactly as it did before this
-// feature existed. Picking a character locks the trace guide to it; picking
-// it again re-opens the dropdown so you can switch characters or pick the
-// blank "–" option to go back to normal.
-function populatePracticeSelect() {
-    const groups = { Hiragana: [], Katakana: [], Kanji: [] };
+// The tiny circle in the top bar. Empty ("–") = nothing selected, and
+// everything behaves exactly as it did before this feature existed.
+// Clicking it opens a searchable/filterable modal; picking a character
+// closes the modal and the circle now shows just that character — nothing
+// else. The trace guide is then locked to it regardless of what the
+// recognizer's top match is. Clicking the circle again reopens the modal
+// to switch characters or clear the selection.
+let practiceFilter = 'all';
+const practiceGridItems = []; // { el, entry, category }
+
+function buildPracticeGrid() {
+    const counts = { Hiragana: 0, Katakana: 0, Kanji: 0 };
     KANA_PRO_DATASET.forEach(entry => {
         const category = entry.name.split(' ')[0];
-        if (groups[category]) groups[category].push(entry);
+        counts[category] = (counts[category] || 0) + 1;
+
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'practice-grid-item';
+        el.innerHTML = `<span class="grid-char">${entry.char}</span><span class="grid-reading">${entry.reading}</span>`;
+        el.addEventListener('click', () => selectPracticeChar(entry.char));
+        practiceGrid.appendChild(el);
+
+        practiceGridItems.push({ el, entry, category });
     });
-    Object.keys(groups).forEach(category => {
-        if (!groups[category].length) return;
-        const optgroup = document.createElement('optgroup');
-        optgroup.label = category;
-        groups[category].forEach(entry => {
-            const opt = document.createElement('option');
-            opt.value = entry.char;
-            opt.textContent = `${entry.char} — ${entry.reading}`;
-            optgroup.appendChild(opt);
-        });
-        practiceSelect.appendChild(optgroup);
-    });
+
+    practiceFilterRow.querySelector('[data-filter="all"] .chip-count').textContent =
+        `(${KANA_PRO_DATASET.length})`;
 }
 
-practiceSelect.addEventListener('change', () => {
-    practiceChar = practiceSelect.value || null;
-    practiceSelect.classList.toggle('active', !!practiceChar);
-    practiceSelect.blur();
-    // Refresh the guide immediately if it's currently showing, so switching
-    // (or clearing) the lock is reflected without an extra click.
+function refreshPracticeGrid() {
+    const query = practiceSearch.value.trim().toLowerCase();
+    let visibleCount = 0;
+
+    practiceGridItems.forEach(({ el, entry, category }) => {
+        const matchesFilter = practiceFilter === 'all' || category === practiceFilter;
+        const matchesQuery = !query ||
+            entry.char === query ||
+            entry.reading.toLowerCase().includes(query) ||
+            entry.name.toLowerCase().includes(query);
+        const visible = matchesFilter && matchesQuery;
+        el.style.display = visible ? '' : 'none';
+        el.classList.toggle('selected', practiceChar === entry.char);
+        if (visible) visibleCount++;
+    });
+
+    practiceEmpty.hidden = visibleCount > 0;
+    practiceGrid.hidden = visibleCount === 0;
+}
+
+function openPracticeModal() {
+    practiceModalOverlay.hidden = false;
+    practiceSearch.value = '';
+    refreshPracticeGrid();
+    requestAnimationFrame(() => practiceSearch.focus());
+}
+function closePracticeModal() {
+    practiceModalOverlay.hidden = true;
+}
+
+function updatePracticeCircle() {
+    practiceCircle.textContent = practiceChar || '–';
+    practiceCircle.classList.toggle('active', !!practiceChar);
+}
+
+function selectPracticeChar(char) {
+    practiceChar = char;
+    updatePracticeCircle();
+    closePracticeModal();
+    // Refresh the guide immediately if it's currently showing.
+    if (traceVisible) drawTraceOverlay();
+}
+
+practiceCircle.addEventListener('click', openPracticeModal);
+practiceModalClose.addEventListener('click', closePracticeModal);
+practiceModalOverlay.addEventListener('click', (e) => {
+    if (e.target === practiceModalOverlay) closePracticeModal(); // click outside card
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !practiceModalOverlay.hidden) closePracticeModal();
+});
+
+practiceSearch.addEventListener('input', refreshPracticeGrid);
+
+practiceFilterRow.addEventListener('click', (e) => {
+    const chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    practiceFilterRow.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    practiceFilter = chip.dataset.filter;
+    refreshPracticeGrid();
+});
+
+practiceRandomBtn.addEventListener('click', () => {
+    const visible = practiceGridItems.filter(({ el }) => el.style.display !== 'none');
+    const pool = visible.length ? visible : practiceGridItems;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    selectPracticeChar(pick.entry.char);
+});
+
+practiceClearBtn.addEventListener('click', () => {
+    practiceChar = null;
+    updatePracticeCircle();
+    closePracticeModal();
     if (traceVisible) {
-        if (practiceChar || lastResults.length) {
-            drawTraceOverlay();
-        } else {
-            hideTrace();
-        }
+        if (lastResults.length) drawTraceOverlay();
+        else hideTrace();
     }
 });
 
@@ -922,7 +1228,7 @@ manualModeBtn.addEventListener('click', () => {
 // ==================== INIT ====================
 async function init() {
     initCanvases();
-    populatePracticeSelect();
+    buildPracticeGrid();
     await waitForFont();
     precomputeCandidateMasks();
 }
