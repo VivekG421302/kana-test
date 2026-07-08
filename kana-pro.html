@@ -346,6 +346,7 @@
   .ctrl-btn.primary:hover { background: var(--accent-hover); }
   .ctrl-btn.toggled { background: var(--accent); border-color: var(--accent); color: #fff; }
   .ctrl-btn:active { transform: scale(0.97); }
+  .ctrl-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   .result-panel {
     background: var(--panel);
@@ -408,7 +409,7 @@
     </div>
   </header>
 
-  <p class="subtitle">Draw any hiragana, katakana, or basic kanji character, any size, anywhere on the canvas, in any stroke order. Kana Pro compares your drawing directly against the real character shapes. <em>(70 characters: 46 hiragana, 12 katakana, 12 kanji.)</em></p>
+  <p class="subtitle">Draw any hiragana, katakana, or basic kanji character, any size, anywhere on the canvas, in any stroke order. Kana Pro compares your drawing directly against the real character shapes. <em>(332 characters: 46 hiragana, 46 katakana, 240 kanji — Grade 1 &amp; 2.)</em></p>
 
   <section class="mode-row">
     <div class="mode-switch">
@@ -502,7 +503,7 @@
 // hard-gate the full character pool down to a small, structurally
 // compatible subset BEFORE any expensive per-pixel IoU mask comparison
 // runs. This is what lets the dataset grow from a 12-character prototype to
-// a 70-character vocabulary (and beyond) without every check paying the
+// a 332-character vocabulary (and beyond) without every check paying the
 // cost of scoring the entire pool, and without visually-scaled-up shapes
 // (e.g. 1-stroke し vs 2-stroke い) getting confused once normalized into
 // the same square scoring frame.
@@ -556,6 +557,10 @@ let attempts = 0;
 let lastResults = [];
 let lastPoolSize = 0;
 let fontReady = false;
+// Set once the (now 332-character) candidate mask precompute finishes.
+// Recognition is gated on this so a fast typer/drawer on a slow device
+// can't trigger scoring against a half-populated candidate cache.
+let datasetReady = false;
 // When set (via the tiny circular selector in the top bar), the trace guide
 // is locked to this character regardless of what the recognizer's top match
 // is. Null means "nothing selected" — everything behaves exactly as before.
@@ -861,33 +866,111 @@ function maskAspect(mask, F) {
 // Precomputed per-candidate extras (projection + aspect) stored alongside masks.
 const candidateExtras = new Map(); // char -> { hProj, vProj, peaks, aspect }
 
-function precomputeCandidateMasks() {
-    const F = KP_CONFIG.FRAME;
+// ==================== ROBUSTNESS: DATASET VALIDATION ====================
+// A hand-maintained 332-entry dataset is exactly the kind of file where a
+// copy-paste slip (duplicate character, missing field) goes unnoticed for a
+// long time. Check it once at load and surface anything wrong loudly in the
+// console rather than let it fail silently deep inside the scoring loop.
+function validateDataset() {
+    const seen = new Set();
+    let duplicates = 0;
+    let incomplete = 0;
+
     KANA_PRO_DATASET.forEach(entry => {
-        const mask   = rasterizeGlyphMask(entry.char);
-        const hProj  = hProjection(mask, F);
-        const vProj  = vProjection(mask, F);
-        const peaks  = peakCount(vProj);
-        const aspect = maskAspect(mask, F);
-        candidateMasks.set(entry.char, mask);
-        candidateExtras.set(entry.char, { hProj, vProj, peaks, aspect });
+        if (seen.has(entry.char)) {
+            duplicates++;
+            console.warn('[Kana Pro] duplicate character in dataset:', entry.char, entry.name);
+        }
+        seen.add(entry.char);
+
+        const hasAllFields = entry.char && entry.reading && entry.name &&
+            Number.isFinite(entry.strokes) &&
+            (entry.columns === 1 || entry.columns === 2) &&
+            ['tall', 'wide', 'square'].includes(entry.aspect);
+        if (!hasAllFields) {
+            incomplete++;
+            console.warn('[Kana Pro] dataset entry missing/invalid fields:', entry);
+        }
+    });
+
+    if (duplicates || incomplete) {
+        console.warn(`[Kana Pro] dataset validation: ${duplicates} duplicate(s), ${incomplete} incomplete entrie(s) out of ${KANA_PRO_DATASET.length}.`);
+    } else {
+        console.debug(`[Kana Pro] dataset validation passed: ${KANA_PRO_DATASET.length} entries, all unique and complete.`);
+    }
+}
+
+// ==================== ROBUSTNESS: CHUNKED PRECOMPUTE ====================
+// Rendering + rasterizing + projecting every candidate glyph is cheap per
+// character, but at 332 (and growing) candidates it's enough synchronous
+// work to visibly freeze the tab on a slow device if done in one pass. This
+// processes a batch, yields back to the browser (rAF), then continues —
+// so the page stays responsive and can show loading progress — instead of
+// blocking everything until the whole dataset is ready.
+function precomputeCandidateMasks(onProgress) {
+    return new Promise(resolve => {
+        const F = KP_CONFIG.FRAME;
+        const entries = KANA_PRO_DATASET;
+        const CHUNK_SIZE = 24;
+        let i = 0;
+
+        function processChunk() {
+            const end = Math.min(i + CHUNK_SIZE, entries.length);
+            for (; i < end; i++) {
+                const entry = entries[i];
+                try {
+                    const mask   = rasterizeGlyphMask(entry.char);
+                    const hProj  = hProjection(mask, F);
+                    const vProj  = vProjection(mask, F);
+                    const peaks  = peakCount(vProj);
+                    const aspect = maskAspect(mask, F);
+                    candidateMasks.set(entry.char, mask);
+                    candidateExtras.set(entry.char, { hProj, vProj, peaks, aspect });
+                } catch (err) {
+                    // Skip this one candidate rather than aborting the whole
+                    // precompute pass — it simply won't be scorable, and
+                    // runRecognition already guards against a missing mask.
+                    console.warn('[Kana Pro] failed to precompute mask for', entry.char, err);
+                }
+            }
+            if (onProgress) onProgress(i, entries.length);
+            if (i < entries.length) {
+                requestAnimationFrame(processChunk);
+            } else {
+                resolve();
+            }
+        }
+        processChunk();
     });
 }
 
 // ==================== CASCADED FILTER FUNNEL ====================
-// The global candidate pool (70 characters and growing) is too big to run
+// The global candidate pool (332 characters and growing) is too big to run
 // expensive per-pixel IoU masks against on every stroke. Before any of that
 // happens, we extract macro-structural features from the RAW, un-normalized
 // strokes and use them to hard-gate the pool down to a small structurally
 // compatible subset. Each stage only ever narrows the pool coming out of the
 // stage before it, and each stage has a graceful fallback so an overly
 // aggressive gate can never zero out the candidate list entirely.
+//
+// Robustness note: the stroke-count tolerance scales with complexity. A
+// 2-stroke miscount matters enormously for simple kana (く vs こ), but for
+// an 18-stroke kanji like 顔, being off by one or two strokes is a common
+// and harmless counting slip — not a structural mismatch. A fixed +/-1
+// tolerance would wrongly exclude the correct character for anything past
+// the simplest glyphs, so the tolerance widens as stroke count grows.
+function strokeTolerance(strokes) {
+    if (strokes <= 4)  return 1;
+    if (strokes <= 9)  return 2;
+    return 3;
+}
+
 function buildCandidatePool(uStrokes, uPeaks, uAspect) {
-    // ---- Stage 1: stroke count filter (+/-1 tolerance) ----
+    // ---- Stage 1: stroke count filter (dynamic tolerance) ----
     // A 3-stroke drawing has no business being compared against a 1-stroke
     // glyph like く or し — discard those candidates before anything else.
-    let strokeFiltered = KANA_PRO_DATASET.filter(
-        c => Math.abs(uStrokes - c.strokes) <= 1
+    let strokeFiltered = KANA_PRO_DATASET.filter(c =>
+        Math.abs(uStrokes - c.strokes) <= strokeTolerance(Math.max(uStrokes, c.strokes))
     );
 
     if (strokeFiltered.length === 0) {
@@ -936,79 +1019,96 @@ function buildCandidatePool(uStrokes, uPeaks, uAspect) {
 }
 
 function runRecognition() {
-    if (!fontReady || allStrokes.length === 0) return;
-    const bbox = getStrokesBBox(allStrokes);
-    if (bbox.w < KP_CONFIG.MIN_BBOX_SIZE && bbox.h < KP_CONFIG.MIN_BBOX_SIZE) return;
+    if (!fontReady || !datasetReady || allStrokes.length === 0) return;
+    try {
+        const bbox = getStrokesBBox(allStrokes);
+        if (bbox.w < KP_CONFIG.MIN_BBOX_SIZE && bbox.h < KP_CONFIG.MIN_BBOX_SIZE) return;
 
-    const F        = KP_CONFIG.FRAME;
-    const userMask = rasterizeUserMask(allStrokes);
-    const uHProj   = hProjection(userMask, F);
-    const uVProj   = vProjection(userMask, F);
-    const uPeaks   = peakCount(uVProj);
-    const uAspect  = rawAspect(allStrokes);
-    const uStrokes = allStrokes.length;
+        const F        = KP_CONFIG.FRAME;
+        const userMask = rasterizeUserMask(allStrokes);
+        const uHProj   = hProjection(userMask, F);
+        const uVProj   = vProjection(userMask, F);
+        const uPeaks   = peakCount(uVProj);
+        const uAspect  = rawAspect(allStrokes);
+        const uStrokes = allStrokes.length;
 
-    // Prune the global 70-character pool down to a structurally compatible
-    // subset BEFORE any pixel-mask scoring happens.
-    const { pool: candidatePool, stage: filterStage } = buildCandidatePool(uStrokes, uPeaks, uAspect);
-    console.debug(`[Kana Pro] funnel: ${candidatePool.length}/${KANA_PRO_DATASET.length} candidates (${filterStage})`);
+        // Prune the global 332-character pool down to a structurally compatible
+        // subset BEFORE any pixel-mask scoring happens.
+        const { pool: candidatePool, stage: filterStage } = buildCandidatePool(uStrokes, uPeaks, uAspect);
+        console.debug(`[Kana Pro] funnel: ${candidatePool.length}/${KANA_PRO_DATASET.length} candidates (${filterStage})`);
 
-    const scores = candidatePool.map(entry => {
-        const refMask  = candidateMasks.get(entry.char);
-        const refExtra = candidateExtras.get(entry.char);
+        const scores = [];
+        for (const entry of candidatePool) {
+            // Defensive: a single malformed candidate (missing mask, corrupt
+            // dataset entry, etc.) should never take down the whole recognition
+            // pass — skip it and keep scoring the rest.
+            try {
+                const refMask  = candidateMasks.get(entry.char);
+                const refExtra = candidateExtras.get(entry.char);
+                if (!refMask || !refExtra) {
+                    console.warn('[Kana Pro] missing precomputed mask for candidate, skipping:', entry.char);
+                    continue;
+                }
 
-        // 1. IoU — overall shape overlap (primary signal)
-        const scoreIoU = iou(userMask, refMask);
+                // 1. IoU — overall shape overlap (primary signal)
+                const scoreIoU = iou(userMask, refMask);
 
-        // 2. Horizontal projection similarity — vertical ink distribution
-        const scoreHProj = projSimilarity(uHProj, refExtra.hProj);
+                // 2. Horizontal projection similarity — vertical ink distribution
+                const scoreHProj = projSimilarity(uHProj, refExtra.hProj);
 
-        // 3. Vertical projection similarity — horizontal ink distribution
-        const scoreVProj = projSimilarity(uVProj, refExtra.vProj);
+                // 3. Vertical projection similarity — horizontal ink distribution
+                const scoreVProj = projSimilarity(uVProj, refExtra.vProj);
 
-        // 4. Peak agreement — how many distinct vertical ink columns?
-        //    Similarity = 1 if counts match, decays with difference.
-        const peakDiff    = Math.abs(uPeaks - refExtra.peaks);
-        const scorePeaks  = 1 / (1 + peakDiff * 1.5);
+                // 4. Peak agreement — how many distinct vertical ink columns?
+                //    Similarity = 1 if counts match, decays with difference.
+                const peakDiff    = Math.abs(uPeaks - refExtra.peaks);
+                const scorePeaks  = 1 / (1 + peakDiff * 1.5);
 
-        // 5. Aspect ratio agreement — tall/wide match.
-        const aspectDiff  = Math.abs(uAspect - refExtra.aspect);
-        const scoreAspect = 1 / (1 + aspectDiff * 2);
+                // 5. Aspect ratio agreement — tall/wide match.
+                const aspectDiff  = Math.abs(uAspect - refExtra.aspect);
+                const scoreAspect = 1 / (1 + aspectDiff * 2);
 
-        // 6. Stroke count agreement — soft bonus, never hard-gates here
-        //    (the hard gating already happened in buildCandidatePool). Now
-        //    uses the real canonical stroke count from the dataset rather
-        //    than a peak-count proxy. For い (2 strokes) vs し (1 stroke)
-        //    this is decisive.
-        const strokeDiff  = Math.abs(uStrokes - entry.strokes);
-        const scoreStroke = 1 / (1 + strokeDiff * 1.2);
+                // 6. Stroke count agreement — soft bonus, never hard-gates here
+                //    (the hard gating already happened in buildCandidatePool). Now
+                //    uses the real canonical stroke count from the dataset rather
+                //    than a peak-count proxy. For い (2 strokes) vs し (1 stroke)
+                //    this is decisive.
+                const strokeDiff  = Math.abs(uStrokes - entry.strokes);
+                const scoreStroke = 1 / (1 + strokeDiff * 1.2);
 
-        // Weighted combination
-        // IoU is the main backbone; projections and peaks discriminate
-        // visually-similar characters; aspect breaks width-height ambiguity;
-        // stroke count is a soft tiebreaker.
-        const combined =
-            0.45 * scoreIoU    +
-            0.15 * scoreHProj  +
-            0.15 * scoreVProj  +
-            0.12 * scorePeaks  +
-            0.08 * scoreAspect +
-            0.05 * scoreStroke;
+                // Weighted combination
+                // IoU is the main backbone; projections and peaks discriminate
+                // visually-similar characters; aspect breaks width-height ambiguity;
+                // stroke count is a soft tiebreaker.
+                const combined =
+                    0.45 * scoreIoU    +
+                    0.15 * scoreHProj  +
+                    0.15 * scoreVProj  +
+                    0.12 * scorePeaks  +
+                    0.08 * scoreAspect +
+                    0.05 * scoreStroke;
 
-        return {
-            char:    entry.char,
-            reading: entry.reading,
-            name:    entry.name,
-            score:   combined,
-        };
-    });
+                scores.push({
+                    char:    entry.char,
+                    reading: entry.reading,
+                    name:    entry.name,
+                    score:   combined,
+                });
+            } catch (err) {
+                console.warn('[Kana Pro] scoring failed for candidate, skipping:', entry.char, err);
+            }
+        }
 
-    scores.sort((a, b) => b.score - a.score);
-    lastResults = scores.slice(0, KP_CONFIG.TOP_N);
-    lastPoolSize = candidatePool.length;
+        scores.sort((a, b) => b.score - a.score);
+        lastResults = scores.slice(0, KP_CONFIG.TOP_N);
+        lastPoolSize = candidatePool.length;
 
-    attempts++;
-    displayResults(lastResults);
+        attempts++;
+        displayResults(lastResults);
+    } catch (err) {
+        // Recognition should degrade gracefully, never crash the page.
+        console.error('[Kana Pro] recognition pass failed unexpectedly:', err);
+    }
 }
 
 function displayResults(results) {
@@ -1228,9 +1328,25 @@ manualModeBtn.addEventListener('click', () => {
 // ==================== INIT ====================
 async function init() {
     initCanvases();
+    validateDataset();
     buildPracticeGrid();
     await waitForFont();
-    precomputeCandidateMasks();
+
+    resultPanel.innerHTML = `<div class="result-placeholder">Loading ${KANA_PRO_DATASET.length} characters…</div>`;
+    checkBtn.disabled = true;
+
+    await precomputeCandidateMasks((done, total) => {
+        resultPanel.innerHTML = `<div class="result-placeholder">Loading characters… (${done}/${total})</div>`;
+    });
+
+    datasetReady = true;
+    checkBtn.disabled = false;
+    resetResultsDisplay();
+
+    // If the person started drawing while the dataset was still loading,
+    // run recognition now instead of leaving them stuck on the loading
+    // message until their next stroke.
+    if (autoMode && allStrokes.length > 0) runRecognition();
 }
 init();
 </script>
