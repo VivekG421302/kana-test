@@ -45,7 +45,35 @@
   .top-bar-title { display: flex; align-items: baseline; gap: 8px; }
   .title-mark { color: var(--accent); font-size: 1.1rem; font-weight: 700; }
   .top-bar h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
-  .top-bar-spacer { width: 90px; }
+  .top-bar-spacer { width: 90px; display: flex; justify-content: flex-end; }
+
+  .practice-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: var(--panel);
+    color: var(--text-secondary);
+    font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    font-size: 0.85rem;
+    line-height: 1;
+    text-align: center;
+    text-align-last: center;
+    cursor: pointer;
+    padding: 0;
+    outline: none;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  .practice-select:hover { border-color: var(--accent); }
+  .practice-select.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 700;
+    background: var(--accent-soft, #eef0fd);
+  }
 
   .subtitle {
     color: var(--text-secondary);
@@ -179,7 +207,11 @@
       <span class="title-mark jp">認識</span>
       <h1>Kana Pro</h1>
     </div>
-    <div class="top-bar-spacer" aria-hidden="true"></div>
+    <div class="top-bar-spacer">
+      <select id="practiceSelect" class="practice-select" title="Practice a specific character — locks the trace guide to it">
+        <option value="">–</option>
+      </select>
+    </div>
   </header>
 
   <p class="subtitle">Draw any hiragana, katakana, or basic kanji character, any size, anywhere on the canvas, in any stroke order. Kana Pro compares your drawing directly against the real character shapes. <em>(70 characters: 46 hiragana, 12 katakana, 12 kanji.)</em></p>
@@ -274,6 +306,7 @@ const statLastMatch = document.getElementById('statLastMatch');
 const statConfidence = document.getElementById('statConfidence');
 const statAttempts = document.getElementById('statAttempts');
 const statPool = document.getElementById('statPool');
+const practiceSelect = document.getElementById('practiceSelect');
 
 // ---- State ----
 let dpr = window.devicePixelRatio || 1;
@@ -287,6 +320,10 @@ let attempts = 0;
 let lastResults = [];
 let lastPoolSize = 0;
 let fontReady = false;
+// When set (via the tiny circular selector in the top bar), the trace guide
+// is locked to this character regardless of what the recognizer's top match
+// is. Null means "nothing selected" — everything behaves exactly as before.
+let practiceChar = null;
 
 // Precomputed candidate glyph masks: char -> Uint8Array(FRAME*FRAME) of 0/1
 const candidateMasks = new Map();
@@ -768,15 +805,19 @@ function resetResultsDisplay() {
 }
 
 // ==================== SHOW TRACE ====================
-// Purely visual — overlays the current top match's real glyph so the user
-// can compare. Must never influence scoring.
+// Purely visual — overlays a real glyph so the user can compare. Must never
+// influence scoring. Normally that glyph is the current top match; if a
+// character is locked via the practice selector, the guide is pinned to
+// that character instead, regardless of what the recognizer thinks the
+// drawing looks like — that's the "locked to practice" behavior.
 function drawTraceOverlay() {
     const cssW = canvasWrapper.getBoundingClientRect().width;
     const cssH = canvasWrapper.getBoundingClientRect().height;
     traceCtx.clearRect(0, 0, cssW, cssH);
-    if (!lastResults.length) return;
 
-    const char = lastResults[0].char;
+    const char = practiceChar || (lastResults.length ? lastResults[0].char : null);
+    if (!char) return;
+
     traceCtx.fillStyle = 'rgba(79,70,229,0.25)';
     traceCtx.textAlign = 'center';
     traceCtx.textBaseline = 'middle';
@@ -812,7 +853,9 @@ clearBtn.addEventListener('click', () => {
 checkBtn.addEventListener('click', () => runRecognition());
 
 traceBtn.addEventListener('click', () => {
-    if (!lastResults.length) return;
+    // Normally there's nothing to trace until a check has run. A locked
+    // practice character is always traceable, even before the first stroke.
+    if (!practiceChar && !lastResults.length) return;
     traceVisible = !traceVisible;
     if (traceVisible) {
         drawTraceOverlay();
@@ -821,6 +864,47 @@ traceBtn.addEventListener('click', () => {
     } else {
         traceOverlay.classList.remove('show');
         traceBtn.classList.remove('toggled');
+    }
+});
+
+// ==================== PRACTICE CHARACTER LOCK ====================
+// The tiny circular selector in the top bar. Empty (default "–" option) =
+// nothing selected, everything behaves exactly as it did before this
+// feature existed. Picking a character locks the trace guide to it; picking
+// it again re-opens the dropdown so you can switch characters or pick the
+// blank "–" option to go back to normal.
+function populatePracticeSelect() {
+    const groups = { Hiragana: [], Katakana: [], Kanji: [] };
+    KANA_PRO_DATASET.forEach(entry => {
+        const category = entry.name.split(' ')[0];
+        if (groups[category]) groups[category].push(entry);
+    });
+    Object.keys(groups).forEach(category => {
+        if (!groups[category].length) return;
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = category;
+        groups[category].forEach(entry => {
+            const opt = document.createElement('option');
+            opt.value = entry.char;
+            opt.textContent = `${entry.char} — ${entry.reading}`;
+            optgroup.appendChild(opt);
+        });
+        practiceSelect.appendChild(optgroup);
+    });
+}
+
+practiceSelect.addEventListener('change', () => {
+    practiceChar = practiceSelect.value || null;
+    practiceSelect.classList.toggle('active', !!practiceChar);
+    practiceSelect.blur();
+    // Refresh the guide immediately if it's currently showing, so switching
+    // (or clearing) the lock is reflected without an extra click.
+    if (traceVisible) {
+        if (practiceChar || lastResults.length) {
+            drawTraceOverlay();
+        } else {
+            hideTrace();
+        }
     }
 });
 
@@ -838,6 +922,7 @@ manualModeBtn.addEventListener('click', () => {
 // ==================== INIT ====================
 async function init() {
     initCanvases();
+    populatePracticeSelect();
     await waitForFont();
     precomputeCandidateMasks();
 }
