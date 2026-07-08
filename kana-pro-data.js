@@ -89,7 +89,7 @@ const KANA_PRO_DATASET = [
     { char: '三', reading: 'san',  name: 'Kanji Three', strokes: 3, columns: 1, aspect: 'wide'   },
     { char: '四', reading: 'yon',  name: 'Kanji Four',  strokes: 5, columns: 1, aspect: 'square' },
     { char: '五', reading: 'go',   name: 'Kanji Five',  strokes: 4, columns: 1, aspect: 'square' },
-    { char: '六', reading: 'roku', name: 'Kanji Six',   strokes: 4, columns: 1, aspect: 'square' },
+    { char: '六', reading: 'roku', name: 'Kanji Six',   strokes: 4, columns: 2, aspect: 'square' },
     { char: '七', reading: 'nana', name: 'Kanji Seven', strokes: 2, columns: 1, aspect: 'square' },
     { char: '八', reading: 'hachi',name: 'Kanji Eight', strokes: 2, columns: 2, aspect: 'wide'   },
     { char: '九', reading: 'kyuu', name: 'Kanji Nine',  strokes: 2, columns: 1, aspect: 'square' },
